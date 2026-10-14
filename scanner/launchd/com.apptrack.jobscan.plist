@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Install:
+       cp com.apptrack.jobscan.plist ~/Library/LaunchAgents/
+       launchctl load ~/Library/LaunchAgents/com.apptrack.jobscan.plist
+     Pulls fresh internship postings into the wishlist once a day at 8am. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.apptrack.jobscan</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/jameshose1/dev/apptrack/scanner/.venv/bin/python</string>
+    <string>/Users/jameshose1/dev/apptrack/scanner/jobscan.py</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/jameshose1/dev/apptrack/scanner</string>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+  <key>StandardOutPath</key>
+  <string>/Users/jameshose1/dev/apptrack/data/jobscan.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/jameshose1/dev/apptrack/data/jobscan.err.log</string>
+</dict>
+</plist>

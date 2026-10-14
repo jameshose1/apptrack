@@ -1,0 +1,22 @@
+{
+  "name": "apptrack-web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3737",
+    "build": "next build",
+    "start": "next start -p 3737"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.3.0",
+    "next": "^15.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/node": "^22.5.0",
+    "@types/react": "^18.3.5",
+    "typescript": "^5.5.4"
+  }
+}

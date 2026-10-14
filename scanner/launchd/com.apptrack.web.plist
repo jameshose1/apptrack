@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Install:
+       cp com.apptrack.web.plist ~/Library/LaunchAgents/
+       launchctl load ~/Library/LaunchAgents/com.apptrack.web.plist
+     Serves the board on http://localhost:3737 always (production build).
+     After changing web/ code: cd web && npm run build, then
+       launchctl kickstart -k gui/$(id -u)/com.apptrack.web -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.apptrack.web</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/jameshose1/.nvm/versions/node/v24.14.1/bin/node</string>
+    <string>/Users/jameshose1/dev/apptrack/web/node_modules/next/dist/bin/next</string>
+    <string>start</string>
+    <string>-p</string>
+    <string>3737</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/jameshose1/dev/apptrack/web</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>NODE_ENV</key>
+    <string>production</string>
+    <key>PATH</key>
+    <string>/Users/jameshose1/.nvm/versions/node/v24.14.1/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/Users/jameshose1/dev/apptrack/data/web.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/jameshose1/dev/apptrack/data/web.err.log</string>
+</dict>
+</plist>

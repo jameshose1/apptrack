@@ -1,0 +1,6 @@
+google-api-python-client>=2.0
+google-auth-httplib2>=0.2
+google-auth-oauthlib>=1.2
+anthropic>=0.40
+python-dotenv>=1.0
+imap-tools>=1.6

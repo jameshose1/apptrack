@@ -1,0 +1,21 @@
+# secrets & creds
+secrets/
+scanner/.env
+web/.env.local
+
+# local data: db (incl. WAL/shm), logs, imported CSVs — all personal
+data/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# node
+node_modules/
+.next/
+out/
+
+# os
+.DS_Store
