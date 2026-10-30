@@ -2,9 +2,12 @@ import Database from "better-sqlite3";
 import path from "path";
 import {
   STALE_AFTER_DAYS,
+  roleType,
+  isPeer,
   type Application,
   type Contact,
   type Funnel,
+  type NetContact,
   type QueueItem,
 } from "./status";
 
@@ -58,6 +61,47 @@ function contactsByToken(): Map<string, Contact[]> {
   return idx;
 }
 
+// all LinkedIn contacts for the networking pipeline, with derived role segment
+// and a flag for whether the user has applied to / wishlisted their company.
+export function getContacts(): NetContact[] {
+  let rows: any[] = [];
+  try {
+    rows = db()
+      .prepare(
+        "SELECT id, name, company, company_key, position, url, is_alum, " +
+          "COALESCE(outreach_status,'todo') AS outreach_status, outreach_updated, " +
+          "connect_note, chat_ask, COALESCE(already_messaged,0) AS already_messaged " +
+          "FROM contacts"
+      )
+      .all() as any[];
+  } catch {
+    return []; // contacts table not created yet (no import run)
+  }
+  const appKeys = new Set<string>();
+  try {
+    for (const r of db()
+      .prepare("SELECT DISTINCT company_key FROM applications WHERE company_key IS NOT NULL")
+      .all() as any[])
+      appKeys.add(r.company_key);
+  } catch {}
+  return rows.map((c) => ({
+    id: c.id,
+    name: c.name,
+    company: c.company,
+    position: c.position,
+    url: c.url,
+    is_alum: c.is_alum,
+    outreach_status: c.outreach_status,
+    outreach_updated: c.outreach_updated,
+    connect_note: c.connect_note,
+    chat_ask: c.chat_ask,
+    already_messaged: c.already_messaged,
+    role: roleType(c.position),
+    is_peer: isPeer(c.position),
+    at_company: !!c.company_key && appKeys.has(c.company_key),
+  }));
+}
+
 function matchContacts(
   companyKey: string,
   idx: Map<string, Contact[]>
@@ -80,12 +124,22 @@ export function getApplications(): Application[] {
   const rows = db()
     .prepare(
       "SELECT a.*, " +
+        // due_at is stored as ISO8601 with a tz offset (e.g. ...T10:00:00-04:00).
+        // datetime('now') is space-separated UTC, so a raw TEXT >= compares two
+        // different string formats and mis-orders deadlines. Wrap both in
+        // datetime() so SQLite normalizes each to canonical UTC before comparing.
         "(SELECT due_at FROM deadlines d WHERE d.application_id = a.id " +
-        " AND d.due_at >= datetime('now') ORDER BY d.due_at LIMIT 1) AS next_due, " +
+        " AND datetime(d.due_at) >= datetime('now') ORDER BY datetime(d.due_at) LIMIT 1) AS next_due, " +
         "(SELECT kind FROM deadlines d WHERE d.application_id = a.id " +
-        " AND d.due_at >= datetime('now') ORDER BY d.due_at LIMIT 1) AS next_kind, " +
+        " AND datetime(d.due_at) >= datetime('now') ORDER BY datetime(d.due_at) LIMIT 1) AS next_kind, " +
         "(SELECT MAX(received_at) FROM email_events e WHERE e.application_id = a.id) " +
-        " AS last_email " +
+        " AS last_email, " +
+        "(SELECT text FROM blurbs b WHERE b.application_id = a.id) AS blurb, " +
+        "(SELECT fit FROM tailoring t WHERE t.application_id = a.id) AS tailor_fit, " +
+        "(SELECT resume_path FROM tailoring t WHERE t.application_id = a.id) AS tailor_resume, " +
+        "(SELECT cover_path FROM tailoring t WHERE t.application_id = a.id) AS tailor_cover, " +
+        "(SELECT gaps FROM tailoring t WHERE t.application_id = a.id) AS tailor_gaps, " +
+        "(SELECT CASE WHEN COALESCE(jd,'')!='' THEN 1 ELSE 0 END FROM tailoring t WHERE t.application_id = a.id) AS tailor_hasjd " +
         "FROM applications a ORDER BY updated_at DESC"
     )
     .all() as any[];

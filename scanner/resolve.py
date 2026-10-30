@@ -10,7 +10,7 @@ import sys
 
 import learning
 from db import connect
-from scan import KIND_TO_STATUS, _find_or_create_application
+from scan import KIND_TO_STATUS, _find_or_create_application, _should_set_status
 
 
 def resolve(queue_id: int, kind: str):
@@ -37,12 +37,26 @@ def resolve(queue_id: int, kind: str):
         conn, item["proposed_company"], item["proposed_role"], status, False
     )
     if app_id and status:
-        conn.execute(
-            "UPDATE applications SET status=?, "
-            "date_applied=COALESCE(date_applied, date('now')), "
-            "updated_at=datetime('now') WHERE id = ?",
-            (status, app_id),
-        )
+        # Guard against regressing a more-advanced stage when resolving a stale
+        # queued email (e.g. confirming an old "application received" for an app
+        # already at 'interview'). Mirrors scan.py's STAGE_RANK rule.
+        current = conn.execute(
+            "SELECT status FROM applications WHERE id = ?", (app_id,)
+        ).fetchone()
+        if _should_set_status(status, current["status"] if current else None):
+            conn.execute(
+                "UPDATE applications SET status=?, "
+                "date_applied=COALESCE(date_applied, date('now')), "
+                "updated_at=datetime('now') WHERE id = ?",
+                (status, app_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE applications SET "
+                "date_applied=COALESCE(date_applied, date('now')), "
+                "updated_at=datetime('now') WHERE id = ?",
+                (app_id,),
+            )
     conn.execute(
         "INSERT OR IGNORE INTO email_events(application_id, gmail_msg_id, "
         "kind, sender, subject, snippet, received_at, fingerprint, confidence) "

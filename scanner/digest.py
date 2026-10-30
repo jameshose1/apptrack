@@ -32,9 +32,11 @@ def build(conn, today):
     soon = conn.execute(
         "SELECT a.company, d.kind, d.due_at FROM deadlines d "
         "JOIN applications a ON a.id = d.application_id "
-        "WHERE d.due_at >= datetime('now') AND d.due_at <= datetime('now','+7 days') "
+        # due_at is ISO8601 with a tz offset; wrap in datetime() so it compares
+        # as canonical UTC against datetime('now') instead of lexically.
+        "WHERE datetime(d.due_at) >= datetime('now') AND datetime(d.due_at) <= datetime('now','+7 days') "
         "AND NOT (d.kind = 'oa' AND a.oa_completed_at IS NOT NULL) "
-        "ORDER BY d.due_at").fetchall()
+        "ORDER BY datetime(d.due_at)").fetchall()
     if soon:
         lines.append("Due within 7 days:")
         lines += [f"  • {r['kind'].upper()} – {r['company']} "

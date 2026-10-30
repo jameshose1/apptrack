@@ -56,8 +56,54 @@ def main(path=DEFAULT):
         )
         added += cur.rowcount
     conn.commit()
+
+    # if the LinkedIn archive's messages.csv is alongside (or passed), flag
+    # everyone the user already has a conversation with so they're skipped.
+    msgs = _find_messages(path)
+    if msgs:
+        flagged = _flag_already_messaged(conn, msgs)
+        print(f"flagged {flagged} contact(s) as already in conversation "
+              f"(from {msgs.name})")
+    else:
+        print("no messages.csv found alongside; skip the 'already messaging' "
+              "filter (export the FULL LinkedIn archive to enable it)")
+
     total = conn.execute("SELECT count(*) FROM contacts").fetchone()[0]
     print(f"imported {added} new contact(s) ({total} total)")
+
+
+def _norm_url(u):
+    return (u or "").strip().rstrip("/").lower().split("?")[0]
+
+
+def _find_messages(conn_path):
+    """messages.csv passed as 2nd arg, or sitting next to the connections CSV."""
+    if len(sys.argv) > 2 and Path(sys.argv[2]).exists():
+        return Path(sys.argv[2])
+    cand = Path(conn_path).parent / "messages.csv"
+    return cand if cand.exists() else None
+
+
+def _flag_already_messaged(conn, msgs_path):
+    # collect every profile URL that appears as a sender or recipient
+    convo_urls = set()
+    for r in _rows(msgs_path):
+        for col in ("SENDER PROFILE URL", "RECIPIENT PROFILE URLS"):
+            val = r.get(col) or ""
+            for u in val.replace(";", " ").replace(",", " ").split():
+                if "linkedin.com/in/" in u.lower():
+                    convo_urls.add(_norm_url(u))
+    if not convo_urls:
+        return 0
+    flagged = 0
+    for cid, url in conn.execute(
+            "SELECT id, url FROM contacts WHERE url IS NOT NULL AND url != ''"):
+        if _norm_url(url) in convo_urls:
+            conn.execute("UPDATE contacts SET already_messaged = 1 WHERE id = ?",
+                         (cid,))
+            flagged += 1
+    conn.commit()
+    return flagged
 
 
 if __name__ == "__main__":

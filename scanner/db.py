@@ -136,6 +136,31 @@ CREATE TABLE IF NOT EXISTS ats_board (
     token       TEXT,
     resolved_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- applicant profile for AI writing: 'experience' (resume text) + 'style' (a
+-- writing sample to mimic the user's voice)
+CREATE TABLE IF NOT EXISTS profile (
+    key   TEXT PRIMARY KEY,
+    value TEXT
+);
+
+-- generated "why I want to work here" blurbs, one per application
+CREATE TABLE IF NOT EXISTS blurbs (
+    application_id INTEGER PRIMARY KEY REFERENCES applications(id) ON DELETE CASCADE,
+    text           TEXT,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- per-application tailoring: an honest fit read + tailored resume bullets +
+-- skill gaps, optionally grounded in a pasted job description
+CREATE TABLE IF NOT EXISTS tailoring (
+    application_id INTEGER PRIMARY KEY REFERENCES applications(id) ON DELETE CASCADE,
+    jd             TEXT,   -- pasted job description (optional)
+    fit            TEXT,   -- honest fit summary + what to emphasize
+    bullets        TEXT,   -- tailored resume bullets, newline-separated
+    gaps           TEXT,   -- skills/keywords to address, honest
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 # columns added after the initial schema shipped (CREATE TABLE IF NOT EXISTS
@@ -150,6 +175,18 @@ _MIGRATIONS = [
     "ALTER TABLE time_blocks ADD COLUMN practice_event_id TEXT",  # split practice block
     "ALTER TABLE applications ADD COLUMN oa_no_deadline_alerted INTEGER DEFAULT 0",
     "ALTER TABLE contacts ADD COLUMN is_alum INTEGER DEFAULT 0",
+    # two orthogonal tags so the board splits into 4 types without mixing:
+    "ALTER TABLE applications ADD COLUMN field TEXT DEFAULT 'cs'",        # cs | other
+    "ALTER TABLE applications ADD COLUMN track TEXT DEFAULT 'internship'",  # internship | job
+    "ALTER TABLE applications ADD COLUMN round INTEGER DEFAULT 0",  # furthest interview round reached
+    # networking pipeline: track reach-out progress per LinkedIn contact
+    "ALTER TABLE contacts ADD COLUMN outreach_status TEXT DEFAULT 'todo'",  # todo|requested|accepted|messaged|replied|chatted|skip
+    "ALTER TABLE contacts ADD COLUMN outreach_updated TEXT",
+    "ALTER TABLE contacts ADD COLUMN connect_note TEXT",   # AI-drafted connection note
+    "ALTER TABLE contacts ADD COLUMN chat_ask TEXT",       # AI-drafted follow-up chat ask
+    "ALTER TABLE contacts ADD COLUMN already_messaged INTEGER DEFAULT 0",  # already in a LinkedIn convo
+    "ALTER TABLE tailoring ADD COLUMN resume_path TEXT",  # generated tailored-resume PDF url
+    "ALTER TABLE tailoring ADD COLUMN cover_path TEXT",   # generated cover-letter PDF url
 ]
 
 
@@ -158,6 +195,11 @@ def connect():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # Establish WAL + a busy timeout from the writer side too, so a launchd scan
+    # running before the web server ever opens the DB still gets WAL concurrency
+    # and doesn't hit "database is locked" against a concurrent dashboard read.
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 

@@ -1,11 +1,19 @@
 """Generate a concise interview-prep brief with Claude, dropped into the
 interview calendar event + prep block so each scheduled interview arrives with a
 ready study sheet. Fails soft (empty string) so scheduling never breaks."""
+import re
+
 from anthropic import Anthropic
 
 import config
 
 _client = None
+
+
+def _no_dashes(t):
+    t = re.sub(r"\s*—\s*", ", ", t)
+    t = re.sub(r"\s*–\s*", " - ", t)
+    return t.replace(" ,", ",").replace(",,", ",").replace(", .", ".")
 
 SYSTEM = (
     "You write tight, skimmable interview-prep briefs for a University of "
@@ -19,8 +27,9 @@ SYSTEM = (
     "Practice: 4-5 representative things to drill (mix of DS&A topics and "
     "anything role-specific).\n"
     "Tips: 2-3 concrete, company-specific pointers.\n"
-    "Be practical. Never invent specifics you're unsure of — keep those "
-    "generic. No preamble, start at 'Company:'."
+    "Be practical. Never invent specifics you're unsure of; keep those "
+    "generic. NEVER use em dashes or en dashes (use commas, colons, or "
+    "hyphens). No preamble, start at 'Company:'."
 )
 
 
@@ -44,7 +53,7 @@ def interview_brief(company: str, role: str) -> str:
                        "content": f"Company: {company}\n"
                                   f"Role: {role or 'Software Engineer Intern'}"}],
         )
-        return "".join(b.text for b in resp.content
-                       if b.type == "text").strip()
+        return _no_dashes("".join(b.text for b in resp.content
+                                  if b.type == "text").strip())
     except Exception:
         return ""  # scheduling must not fail because a brief couldn't be written

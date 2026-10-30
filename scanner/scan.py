@@ -29,6 +29,7 @@ KIND_TO_STATUS = {
     "confirmation": "applied",
     "oa": "oa",
     "interview": "interview",
+    "team_match": "team_match",
     "offer": "offer",
     "rejection": "rejected",
 }
@@ -37,7 +38,7 @@ KIND_TO_STATUS = {
 # must never knock something back from oa/interview). offer/rejected are
 # terminal outcomes that win regardless of current stage.
 STAGE_RANK = {"wishlist": 0, "applied": 1, "oa": 2, "interview": 3,
-              "offer": 4, "rejected": 4, "missed": 4}
+              "team_match": 4, "offer": 5, "rejected": 5, "missed": 5}
 _TERMINAL = {"offer", "rejected", "missed"}
 
 
@@ -75,7 +76,33 @@ def _role_match(a, b):
     return bool(ta and tb and (ta & tb))
 
 
-def _find_or_create_application(conn, company, role, status, dry):
+# two orthogonal tags that split the board: CS vs non-CS, internship vs job.
+# The classifier sets them when it can; otherwise fall back to the role title.
+_INTERN_RE = re.compile(r"\b(intern|internship|interns|co-?op)\b", re.I)
+_CS_RE = re.compile(
+    r"\b(software|develop\w*|engineer\w*|program\w*|data|machine.?learning|"
+    r"\bml\b|\bai\b|backend|back.?end|frontend|front.?end|full.?stack|devops|"
+    r"\bsre\b|security|computer|\bit\b|\bqa\b|test\w*|mobile|ios|android|web|"
+    r"cloud|platform|systems?|robotics|firmware|embedded|infrastructure|network)\b",
+    re.I,
+)
+
+
+def _field_track(verdict):
+    """(field, track) for an application from the classifier verdict, with a
+    role-title fallback when the model left a flag unset (None)."""
+    role = verdict.get("role") or ""
+    intern = verdict.get("is_internship")
+    if intern is None:
+        intern = bool(_INTERN_RE.search(role))
+    cs = verdict.get("is_cs")
+    if cs is None:
+        cs = bool(_CS_RE.search(role))
+    return ("cs" if cs else "other"), ("internship" if intern else "job")
+
+
+def _find_or_create_application(conn, company, role, status, dry,
+                                field="cs", track="internship"):
     """Attach an email to the right application row (creating one if needed).
 
     Prefers a role match at the company so a confirmation email PROMOTES the
@@ -110,9 +137,10 @@ def _find_or_create_application(conn, company, role, status, dry):
     if dry:
         return None
     cur = conn.execute(
-        "INSERT INTO applications(company, company_key, role, status, date_applied) "
-        "VALUES(?, ?, ?, 'applied', date('now'))",
-        (company, key, role or ""),
+        "INSERT INTO applications(company, company_key, role, status, "
+        "date_applied, field, track) "
+        "VALUES(?, ?, ?, 'applied', date('now'), ?, ?)",
+        (company, key, role or "", field, track),
     )
     conn.commit()
     return cur.lastrowid
@@ -171,8 +199,10 @@ def _apply_label(conn, cal, tasks_svc, msg, verdict, print_only):
     status = KIND_TO_STATUS.get(kind)
     due = _due_from_verdict(verdict, msg["received_at"]) if kind in ("oa", "interview") else None
     oa_done = kind == "oa" and bool(verdict.get("oa_completed"))
+    field, track = _field_track(verdict)
     app_id = _find_or_create_application(
-        conn, verdict.get("company"), verdict.get("role"), status, print_only
+        conn, verdict.get("company"), verdict.get("role"), status, print_only,
+        field, track,
     )
     if print_only:
         extra = f" | due {due[:10]}" if due else ""
@@ -180,9 +210,16 @@ def _apply_label(conn, cal, tasks_svc, msg, verdict, print_only):
             extra += " | OA COMPLETED" if oa_done else \
                 f" | oa {verdict.get('oa_minutes') or 'default'}min"
         print(f"  -> AUTO {kind} ({verdict['confidence']:.2f}) "
+              f"[{field}/{track}] "
               f"{verdict.get('company')} / {verdict.get('role')}{extra}")
         return
     if app_id:
+        # keep the two tags current to the latest classification (self-corrects a
+        # row first created from a vaguer email); never flip a sourced wishlist's
+        # tags here since sourcing sets them explicitly
+        conn.execute(
+            "UPDATE applications SET field = ?, track = ? WHERE id = ? "
+            "AND status != 'wishlist'", (field, track, app_id))
         cur = conn.execute("SELECT status FROM applications WHERE id = ?",
                            (app_id,)).fetchone()
         # status only advances (a late "received" email can't undo oa/interview)
@@ -193,6 +230,13 @@ def _apply_label(conn, cal, tasks_svc, msg, verdict, print_only):
                 "updated_at = datetime('now') WHERE id = ?",
                 (status, app_id),
             )
+        if kind == "interview":
+            # track the furthest interview round reached (at least 1 for any
+            # interview email); the classifier guesses the round when stated
+            rnd = int(verdict.get("interview_round") or 0) or 1
+            conn.execute(
+                "UPDATE applications SET round = MAX(COALESCE(round, 0), ?) "
+                "WHERE id = ?", (rnd, app_id))
         if kind == "oa":
             mins = int(verdict.get("oa_minutes") or 0)
             if mins:

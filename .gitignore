@@ -16,6 +16,7 @@ venv/
 node_modules/
 .next/
 out/
+*.tsbuildinfo
 
 # os
 .DS_Store

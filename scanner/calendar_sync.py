@@ -36,12 +36,23 @@ def sync_deadline(tasks_svc, conn, application_id: int, kind: str, due_at: str):
     synced. The task's id is stored in the deadlines.gcal_event_id column."""
     if not _plausible(due_at):
         return None
-    existing = conn.execute(
-        "SELECT id, gcal_event_id FROM deadlines "
-        "WHERE application_id = ? AND kind = ? AND due_at = ?",
-        (application_id, kind, due_at),
-    ).fetchone()
-    if existing and existing["gcal_event_id"]:
+    # OA deadlines are one-per-application; an application has a single online
+    # assessment. Interviews can legitimately have multiple rounds. Dedup OA by
+    # (application, kind) so a drifting assumed due_at cannot spawn a fresh row
+    # every scan (the cause of the phantom "5 IBM OAs" bug).
+    if kind == "oa":
+        existing = conn.execute(
+            "SELECT id, gcal_event_id FROM deadlines "
+            "WHERE application_id = ? AND kind = ?",
+            (application_id, kind),
+        ).fetchone()
+    else:
+        existing = conn.execute(
+            "SELECT id, gcal_event_id FROM deadlines "
+            "WHERE application_id = ? AND kind = ? AND due_at = ?",
+            (application_id, kind, due_at),
+        ).fetchone()
+    if existing:
         return existing["gcal_event_id"]
 
     app = conn.execute(

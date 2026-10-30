@@ -39,11 +39,14 @@ CLASSIFY_TOOL = {
             "kind": {
                 "type": "string",
                 "enum": ["confirmation", "rejection", "oa", "interview",
-                         "offer", "other"],
+                         "team_match", "offer", "other"],
                 "description": "confirmation=application received; oa=online "
                                "assessment/coding test; interview=interview "
-                               "invite/scheduling; offer=offer; rejection=turned "
-                               "down; other=not a real application update.",
+                               "invite/scheduling; team_match=team/host matching "
+                               "(being matched to a team, manager, or host after "
+                               "passing interviews, before or around an offer); "
+                               "offer=offer; rejection=turned down; other=not a "
+                               "real application update.",
             },
             "company": {
                 "type": "string",
@@ -75,6 +78,15 @@ CLASSIFY_TOOL = {
                                "(convert hours to days: 72 hours = 3). 0 if no "
                                "deadline or if you set deadline_iso instead.",
             },
+            "interview_round": {
+                "type": "number",
+                "description": "For an INTERVIEW email ONLY: which interview round "
+                               "this is if the email indicates it (phone "
+                               "screen/first round = 1, second round = 2, and so "
+                               "on; final/onsite/superday = the highest number "
+                               "stated, else your best estimate). 0 if not an "
+                               "interview or the round is not indicated.",
+            },
             "oa_minutes": {
                 "type": "number",
                 "description": "For an OA/assessment ONLY: how long the test "
@@ -103,6 +115,25 @@ CLASSIFY_TOOL = {
                                "This is the assessment platform, NOT the employer "
                                "and NOT an ATS like Workday/Greenhouse/Lever. "
                                "Empty string if not an OA or not identifiable.",
+            },
+            "is_internship": {
+                "type": "boolean",
+                "description": "True if the role is an INTERNSHIP or co-op "
+                               "(temporary, student-focused). False if it is a "
+                               "regular full-time or part-time job (consulting "
+                               "analyst, new-grad SWE, a remote part-time gig, "
+                               "etc). If you cannot tell from the email, infer "
+                               "from the role title.",
+            },
+            "is_cs": {
+                "type": "boolean",
+                "description": "True if the role is a COMPUTER-SCIENCE / software "
+                               "/ technical engineering role (software engineer, "
+                               "developer, data, ML/AI, security, IT, QA, systems, "
+                               "robotics, etc). False for non-technical roles "
+                               "(consulting, finance, marketing, sales, "
+                               "operations, general business). Infer from the role "
+                               "title if the email does not say outright.",
             },
         },
         "required": ["kind", "company", "role", "confidence"],
@@ -142,10 +173,15 @@ def classify(email: dict) -> dict:
             out.setdefault("confidence", 0.0)
             out.setdefault("deadline_iso", "")
             out.setdefault("deadline_days", 0)
+            out.setdefault("interview_round", 0)
             out.setdefault("oa_minutes", 0)
             out.setdefault("oa_completed", False)
             out.setdefault("oa_platform", "")
+            # None (not a fixed bool) so scan.py falls back to the title heuristic
+            out.setdefault("is_internship", None)
+            out.setdefault("is_cs", None)
             return out
     return {"kind": "other", "company": "", "role": "", "confidence": 0.0,
-            "deadline_iso": "", "deadline_days": 0, "oa_minutes": 0,
-            "oa_completed": False, "oa_platform": ""}
+            "deadline_iso": "", "deadline_days": 0, "interview_round": 0,
+            "oa_minutes": 0, "oa_completed": False, "oa_platform": "",
+            "is_internship": None, "is_cs": None}

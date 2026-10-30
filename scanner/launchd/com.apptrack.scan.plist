@@ -2,7 +2,7 @@
 <!-- Install:
        cp com.apptrack.scan.plist ~/Library/LaunchAgents/
        launchctl load ~/Library/LaunchAgents/com.apptrack.scan.plist
-     Runs the scan at 9am, 1pm, 6pm, 10pm daily (when the Mac is awake). -->
+     Runs the scan at 9am, 1pm, 6pm daily (when the Mac is awake). -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -21,7 +21,6 @@
     <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
     <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>0</integer></dict>
     <dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>0</integer></dict>
-    <dict><key>Hour</key><integer>22</integer><key>Minute</key><integer>0</integer></dict>
   </array>
   <key>StandardOutPath</key>
   <string>/Users/jameshose1/dev/apptrack/data/scan.log</string>
