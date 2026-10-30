@@ -117,6 +117,12 @@ OA_BLOCK_COLOR_ID = os.environ.get("APPTRACK_OA_COLOR", "3")            # Grape
 INTERVIEW_COLOR_ID = os.environ.get("APPTRACK_INTERVIEW_COLOR", "4")    # Flamingo
 INTERVIEW_PREP_COLOR_ID = os.environ.get("APPTRACK_PREP_COLOR", "1")    # Lavender
 
+# master switch for the whole Google Calendar/Tasks half. On (default) = push
+# deadlines, OA/interview blocks, the accountability hour and digest to Google
+# (needs the OAuth setup in secrets/). Off = inbox -> board only, no Google
+# login required; scanning and the review queue work exactly the same.
+CALENDAR_ENABLED = os.environ.get("APPTRACK_CALENDAR", "1") == "1"
+
 CALENDAR_ID = os.environ.get("APPTRACK_CALENDAR_ID", "primary")
 TIMEZONE = os.environ.get("APPTRACK_TIMEZONE", "America/New_York")
 

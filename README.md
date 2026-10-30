@@ -80,6 +80,11 @@ the interesting part:
 Reminders ride on Google Calendar and Tasks so they fire from Google's servers
 whether or not the machine is on.
 
+This whole half is **optional**. Set `APPTRACK_CALENDAR=0` to run inbox → board
+only: the scanner, classification, and review queue work exactly the same, but
+nothing is written to Google and no OAuth setup is needed. Leave it unset (or
+`1`) for the full calendar integration.
+
 ## Referrals
 
 Referrals convert far better than cold applications, so apptrack surfaces them:
@@ -113,9 +118,11 @@ Gmail over IMAP, launchd.
 1. Gmail app password (`myaccount.google.com/apppasswords`) into `scanner/.env`
    as `APPTRACK_APP_PASSWORD`, with `APPTRACK_EMAIL`. See `scanner/.env.example`.
 2. Anthropic key in `scanner/.env` as `ANTHROPIC_API_KEY`.
-3. Google Cloud project: enable the Calendar and Tasks APIs, add the
-   `calendar.events`, `calendar.readonly`, and `tasks` scopes, create a Desktop
-   OAuth client, download it to `secrets/google_client.json`.
+3. *(Optional, for the calendar half.)* Google Cloud project: enable the
+   Calendar and Tasks APIs, add the `calendar.events`, `calendar.readonly`, and
+   `tasks` scopes, create a Desktop OAuth client, download it to
+   `secrets/google_client.json`. To skip this entirely, set `APPTRACK_CALENDAR=0`
+   and run inbox → board only.
 4. `cd scanner && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`
 5. `.venv/bin/python scan.py --dry-run` to watch classification without writing.
 6. `cd web && npm install && npm run dev` for the board on port 3737.

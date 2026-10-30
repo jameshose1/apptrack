@@ -272,7 +272,10 @@ def _apply_label(conn, cal, tasks_svc, msg, verdict, print_only):
     )
     conn.commit()
     # an interview email with an actual clock time becomes a real calendar event
-    # + prep block; an uncompleted OA/interview due date becomes a checkable Task
+    # + prep block; an uncompleted OA/interview due date becomes a checkable Task.
+    # Skipped entirely when the Google half is off (cal/tasks_svc are None).
+    if cal is None and tasks_svc is None:
+        return
     if kind == "interview" and app_id and _has_clock_time(verdict.get("deadline_iso")):
         schedule_interview(cal, tasks_svc, conn, app_id, due)
     elif due and not oa_done:
@@ -310,8 +313,11 @@ def _already_seen(conn, msg_id) -> bool:
 def run(dry=False):
     init_db()
     conn = connect()
-    cal = None if dry else gc.calendar()
-    tasks_svc = None if dry else gc.tasks()
+    # the Google half is skipped in a dry run or when APPTRACK_CALENDAR=0
+    # (inbox -> board only). cal/tasks_svc stay None so no OAuth is attempted.
+    use_cal = not dry and config.CALENDAR_ENABLED
+    cal = gc.calendar() if use_cal else None
+    tasks_svc = gc.tasks() if use_cal else None
 
     since = imap_client.since_from_epoch(get_meta(conn, "last_scan_epoch"))
     print(f"scan: reading INBOX since {since}")
@@ -343,15 +349,15 @@ def run(dry=False):
             _queue(conn, msg, verdict, dry)
 
     if not dry:
-        cal = cal or gc.calendar()
-        # serialize OA work blocks (soonest-due first, one/day, skip completed)
-        sync_oa_blocks(cal, tasks_svc, conn)
-        digest.post_daily_digest(cal, conn)   # today's summary + running counts
-        # lay out TOMORROW's job-application hour on the evening ("night before")
-        # run; the first run at/after the night hour books it, later ones no-op
-        if datetime.now().hour >= config.ACCOUNTABILITY_NIGHT_BEFORE_HOUR:
-            tomorrow = (datetime.now() + timedelta(days=1)).date()
-            place_accountability_hour(cal, tasks_svc, tomorrow)
+        if use_cal:
+            # serialize OA work blocks (soonest-due first, one/day, skip completed)
+            sync_oa_blocks(cal, tasks_svc, conn)
+            digest.post_daily_digest(cal, conn)   # today's summary + running counts
+            # lay out TOMORROW's job-application hour on the evening ("night before")
+            # run; the first run at/after the night hour books it, later ones no-op
+            if datetime.now().hour >= config.ACCOUNTABILITY_NIGHT_BEFORE_HOUR:
+                tomorrow = (datetime.now() + timedelta(days=1)).date()
+                place_accountability_hour(cal, tasks_svc, tomorrow)
         set_meta(conn, "last_scan_epoch", str(int(time.time())))
     conn.close()
     print(f"scan: done ({seen} read, {classified} classified)")
