@@ -6,6 +6,10 @@ web/.env.local
 # local data: db (incl. WAL/shm), logs, imported CSVs — all personal
 data/
 
+# generated application artifacts & reports (already-committed files stay tracked)
+web/public/resumes/
+MORNING_REPORT_*
+
 # python
 __pycache__/
 *.pyc
