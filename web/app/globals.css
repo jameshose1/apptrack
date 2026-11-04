@@ -76,6 +76,7 @@ h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: 
 .badge { display: inline-block; font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 20px; margin-top: 8px; }
 .badge.cold { background: rgba(255, 107, 107, 0.14); color: var(--rejected); border: 1px solid rgba(255, 107, 107, 0.4); }
 
+.wishlist-sort { margin-bottom: 10px; }
 .wishlist-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(258px, 1fr)); gap: 10px; align-items: start; }
 .wcard { background: var(--panel); border: 1px solid var(--line); border-radius: 9px; padding: 11px 12px; display: flex; flex-direction: column; gap: 4px; }
 .wcard.dream { border-color: rgba(242, 184, 75, 0.45); }
