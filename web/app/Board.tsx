@@ -68,6 +68,7 @@ export default function Board({
 }) {
   const [field, setField] = useState("all");
   const [track, setTrack] = useState("all");
+  const [wlSort, setWlSort] = useState("dream");
 
   // apply the two orthogonal filters to everything downstream (board + stats)
   const shown = useMemo(
@@ -80,9 +81,15 @@ export default function Board({
     [apps, field, track]
   );
 
+  const postedTime = (s: string | null) => (s ? new Date(s).getTime() : 0);
   const wishlist = shown
     .filter((a) => a.status === "wishlist")
-    .sort((a, b) => b.is_dream - a.is_dream);
+    .sort((a, b) =>
+      wlSort === "recent"
+        ? postedTime(b.posted_at) - postedTime(a.posted_at)
+        : b.is_dream - a.is_dream ||
+          postedTime(b.posted_at) - postedTime(a.posted_at)
+    );
   const tracked = shown.filter((a) => a.status !== "wishlist");
 
   // funnel + stats recomputed over the filtered set so they match the view
@@ -194,6 +201,17 @@ export default function Board({
   );
 
   const wishlistGrid = (
+    <>
+    <div className="wishlist-sort">
+      <Segmented
+        options={[
+          { key: "dream", label: "Dream first" },
+          { key: "recent", label: "Recently posted" },
+        ]}
+        value={wlSort}
+        onChange={setWlSort}
+      />
+    </div>
     <div className="wishlist-grid">
       {wishlist.map((a) => (
         <div className={`wcard${a.is_dream ? " dream" : ""}`} key={a.id}>
@@ -241,6 +259,7 @@ export default function Board({
         <div className="empty">Nothing here yet. The job scanner runs daily.</div>
       )}
     </div>
+    </>
   );
 
   const review = (
