@@ -24,3 +24,6 @@ out/
 
 # os
 .DS_Store
+
+# personal resume regenerator (embeds real contact info + resume data)
+scanner/_refresh_resume.py
