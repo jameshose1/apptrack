@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
 import {
   PIPELINE,
   STATUS_LABEL,
@@ -10,14 +10,11 @@ import {
   type QueueItem,
   type NetContact,
 } from "./lib/status";
-import StatusSelect from "./StatusSelect";
 import QueueButtons from "./QueueButtons";
 import WishlistActions from "./WishlistActions";
 import OaDone from "./OaDone";
-import Referrals from "./Referrals";
-import WhyUs from "./WhyUs";
-import Tailor from "./Tailor";
-import FieldTrack from "./FieldTrack";
+import StatusSelect from "./StatusSelect";
+import Detail from "./Detail";
 import Funnel from "./Funnel";
 import Network from "./Network";
 import Tabs from "./Tabs";
@@ -69,6 +66,9 @@ export default function Board({
   const [field, setField] = useState("all");
   const [track, setTrack] = useState("all");
   const [wlSort, setWlSort] = useState("dream");
+  const [q, setQ] = useState("");
+  const [openId, setOpenId] = useState<number | null>(null);
+  const openApp = openId == null ? null : apps.find((a) => a.id === openId) ?? null;
 
   // apply the two orthogonal filters to everything downstream (board + stats)
   const shown = useMemo(
@@ -76,9 +76,11 @@ export default function Board({
       apps.filter(
         (a) =>
           (field === "all" || a.field === field) &&
-          (track === "all" || a.track === track)
+          (track === "all" || a.track === track) &&
+          (!q.trim() ||
+            `${a.company} ${a.role ?? ""}`.toLowerCase().includes(q.trim().toLowerCase()))
       ),
-    [apps, field, track]
+    [apps, field, track, q]
   );
 
   const postedTime = (s: string | null) => (s ? new Date(s).getTime() : 0);
@@ -122,58 +124,72 @@ export default function Board({
     };
   }, [tracked]);
 
-  const card = (a: Application) => (
-    <div className={`card${a.stale ? " stale" : ""}`} key={a.id}>
-      <div className="co">
-        {a.url ? (
-          <a href={a.url} target="_blank" rel="noreferrer">
-            {a.company}
-          </a>
-        ) : (
-          a.company
-        )}
-      </div>
-      {a.role && <div className="role">{a.role}</div>}
-      <div className="meta">
-        <span>Applied {fmtDate(a.date_applied)}</span>
-        <StatusSelect appId={a.id} status={a.status} />
-      </div>
-      {a.next_due && (
-        <div className="due">
-          {STATUS_LABEL[a.next_kind ?? ""] ?? a.next_kind} due{" "}
-          {fmtDate(a.next_due)}
-        </div>
-      )}
-      {a.status === "oa" && (
-        <div className="oa-row">
-          <OaDone id={a.id} done={!!a.oa_completed_at} />
-        </div>
-      )}
-      {a.stale && (
-        <span className="badge cold">going cold · {a.days_idle}d quiet</span>
-      )}
-      <Referrals
-        company={a.company}
-        role={a.role}
-        status={a.status}
-        contacts={a.contacts}
-      />
-      {a.status !== "rejected" && a.status !== "missed" && (
-        <>
-          <WhyUs appId={a.id} blurb={a.blurb} />
-          <Tailor
-            appId={a.id}
-            fit={a.tailor_fit}
-            resume={a.tailor_resume}
-            cover={a.tailor_cover}
-            gaps={a.tailor_gaps}
-            hasJd={a.tailor_hasjd}
-          />
-        </>
-      )}
-      <FieldTrack appId={a.id} field={a.field} track={a.track} />
-    </div>
+  const ago = (d: string | null) => {
+    if (!d) return "";
+    const n = Math.floor((Date.now() - Date.parse(d.slice(0, 10) + "T00:00:00Z")) / 86_400_000);
+    return n <= 0 ? "today" : `${n}d`;
+  };
+
+  // little indicators for prep that's already done, so the card stays one glance
+  const prep = (a: Application) => (
+    <span className="prep">
+      {a.blurb && <span title="why-us written">✍️</span>}
+      {(a.tailor_resume || a.tailor_fit) && <span title="resume tailored">✨</span>}
+      {a.contacts.length > 0 && <span title="people you know here">🤝{a.contacts.length}</span>}
+    </span>
   );
+
+  // stop clicks on controls inside a card from also opening the drawer
+  const keep = (e: MouseEvent) => e.stopPropagation();
+
+  const card = (a: Application) => {
+    const closed = a.status === "rejected" || a.status === "missed";
+    if (closed)
+      return (
+        <div className="card mini" key={a.id} onClick={() => setOpenId(a.id)}>
+          <div className="mini-main">
+            <span className="co">{a.company}</span>
+            {a.role && <span className="role">{a.role}</span>}
+          </div>
+          <span className="when" onClick={keep}>
+            <StatusSelect appId={a.id} status={a.status} />
+          </span>
+        </div>
+      );
+    return (
+      <div
+        className={`card${a.stale ? " stale" : ""}`}
+        key={a.id}
+        onClick={() => setOpenId(a.id)}
+      >
+        <div className="card-top">
+          <span className="co">{a.company}</span>
+          {a.is_dream ? <span className="star">★</span> : null}
+        </div>
+        {a.role && <div className="role">{a.role}</div>}
+        <div className="meta">
+          <span>
+            {fmtDate(a.date_applied)}
+            {a.date_applied ? ` · ${ago(a.date_applied)}` : ""} {prep(a)}
+          </span>
+          <span onClick={keep}>
+            <StatusSelect appId={a.id} status={a.status} />
+          </span>
+        </div>
+        {a.next_due && (
+          <div className="due">
+            {STATUS_LABEL[a.next_kind ?? ""] ?? a.next_kind} due {fmtDate(a.next_due)}
+          </div>
+        )}
+        {a.status === "oa" && (
+          <div className="oa-row" onClick={keep}>
+            <OaDone id={a.id} done={!!a.oa_completed_at} />
+          </div>
+        )}
+        {a.stale && <span className="badge cold">going cold · {a.days_idle}d quiet</span>}
+      </div>
+    );
+  };
 
   const pipeline = (
     <div className="board">
@@ -184,7 +200,10 @@ export default function Board({
             : a.status === s
         );
         return (
-          <div className="col" key={s}>
+          <div
+            className={`col${list.length === 0 ? " slim" : ""}${s === "applied" ? " wide" : ""}`}
+            key={s}
+          >
             <div className="col-head">
               <span>
                 <span className="dot" style={{ background: `var(--${s})` }} />
@@ -192,8 +211,10 @@ export default function Board({
               </span>
               <span className="n">{list.length}</span>
             </div>
-            {list.map(card)}
-            {list.length === 0 && <div className="empty">—</div>}
+            <div className="col-body">
+              {list.map(card)}
+              {list.length === 0 && <div className="empty">none yet</div>}
+            </div>
           </div>
         );
       })}
@@ -227,22 +248,10 @@ export default function Board({
               {a.posted_at ? `posted ${fmtDate(a.posted_at)}` : ""}
             </div>
           )}
-          <Referrals
-            company={a.company}
-            role={a.role}
-            status={a.status}
-            contacts={a.contacts}
-          />
-          <WhyUs appId={a.id} blurb={a.blurb} />
-          <Tailor
-            appId={a.id}
-            fit={a.tailor_fit}
-            resume={a.tailor_resume}
-            cover={a.tailor_cover}
-            gaps={a.tailor_gaps}
-            hasJd={a.tailor_hasjd}
-          />
           <div className="wactions">
+            <button className="prepbtn" onClick={() => setOpenId(a.id)}>
+              Prep {prep(a)}
+            </button>
             <a
               className="apply"
               href={a.url ?? "#"}
@@ -307,6 +316,12 @@ export default function Board({
             { key: "job", label: TRACK_LABEL.job },
           ]}
         />
+        <input
+          className="search"
+          placeholder="Search company or role…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
       </div>
 
       <div className="stats">
@@ -368,6 +383,7 @@ export default function Board({
           },
         ]}
       />
+      {openApp && <Detail app={openApp} onClose={() => setOpenId(null)} />}
     </>
   );
 }
