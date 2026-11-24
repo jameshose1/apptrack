@@ -34,3 +34,9 @@ export function listItems(s: string | null | undefined): string[] {
 
 export const wordCount = (s: string | null | undefined) =>
   s ? s.trim().split(/\s+/).length : 0;
+
+// only render plain web links; listing URLs come from outside sources and
+// React 18 still renders javascript: hrefs (audit 2026-11-21 APP-08)
+export function safeHref(u: string | null | undefined): string | undefined {
+  return u && /^https?:\/\//i.test(u.trim()) ? u.trim() : undefined;
+}

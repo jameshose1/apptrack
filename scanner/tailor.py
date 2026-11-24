@@ -8,6 +8,9 @@ invents anything.
     python3 tailor.py <application_id>
 """
 import html
+import ipaddress
+import socket
+import urllib.parse
 import re
 import subprocess
 import sys
@@ -87,17 +90,54 @@ def _greenhouse_jd(url, company):
     return ""
 
 
+def _public_url(url):
+    """Only http(s) URLs whose host resolves to public IPs (no LAN, loopback,
+    link-local, metadata). Posting URLs come from community lists, so a fetch
+    must not be steerable into the local network (audit 2026-11-21 APP-08)."""
+    try:
+        u = urllib.parse.urlsplit(url)
+        if u.scheme not in ("http", "https") or not u.hostname:
+            return False
+        infos = socket.getaddrinfo(u.hostname, u.port or (443 if u.scheme == "https" else 80))
+        for info in infos:
+            ip = ipaddress.ip_address(info[4][0])
+            if (ip.is_private or ip.is_loopback or ip.is_link_local
+                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def _get_public(url, **kw):
+    """requests.get that re-checks every redirect hop with _public_url."""
+    for _ in range(6):
+        if not _public_url(url):
+            return None
+        r = requests.get(url, allow_redirects=False, **kw)
+        if r.is_redirect or r.status_code in (301, 302, 303, 307, 308):
+            loc = r.headers.get("location")
+            if not loc:
+                return r
+            url = urllib.parse.urljoin(url, loc)
+            continue
+        return r
+    return None
+
+
 def _fetch_jd(url, company=""):
-    if not url or not url.startswith("http"):
+    if not url or not _public_url(url):
         return ""
     gh = _greenhouse_jd(url, company)
     if gh:
         return gh
     try:
-        r = requests.get(url, headers={"User-Agent": UA,
-                                       "Accept-Language": "en-US,en;q=0.9"},
-                         timeout=20, allow_redirects=True)
+        r = _get_public(url, headers={"User-Agent": UA,
+                                      "Accept-Language": "en-US,en;q=0.9"},
+                        timeout=20)
     except Exception:
+        return ""
+    if r is None:
         return ""
     if r.status_code != 200:
         return ""
@@ -357,6 +397,18 @@ def _to_pdf(html_str, pdf_path):
     return pdf_path.exists()
 
 
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+")
+_PHONE_RE = re.compile(r"\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}")
+
+
+def _contact(resume_text):
+    e = _EMAIL_RE.search(resume_text or "")
+    p = _PHONE_RE.search(resume_text or "")
+    return {"name": config.APPLICANT_NAME or "James Hose",
+            "email": e.group(0) if e else "",
+            "phone": p.group(0) if p else ""}
+
+
 def main(app_id):
     conn = connect()
     app = conn.execute("SELECT company, role, url FROM applications WHERE id = ?",
@@ -409,6 +461,9 @@ def main(app_id):
         print("no resume produced")
         return
     data = clean(data)
+    # contact line always comes from his real resume, never from model output
+    # (a job page could otherwise inject its own email/phone, APP-09)
+    data.update(_contact(experience))
     slug = f"{_slug(app['company'])}-{_slug(role)}"
     resume_pdf = PUBLIC / f"{slug}.pdf"
     resume_ok = _to_pdf(_render_resume_html(data), resume_pdf)
@@ -424,7 +479,7 @@ def main(app_id):
     )
     body = _no_dashes("".join(b.text for b in cresp.content if b.type == "text").strip())
     cover_pdf = PUBLIC / f"{slug}-cover.pdf"
-    cover_ok = _to_pdf(_render_cover_html(data.get("name", "James Hose"),
+    cover_ok = _to_pdf(_render_cover_html(data["name"],
                                           data.get("phone"), data.get("email"),
                                           app["company"], body), cover_pdf)
     cover_url = f"/resumes/{slug}-cover.pdf" if cover_ok else None

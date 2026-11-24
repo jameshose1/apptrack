@@ -6,6 +6,7 @@ import re
 from anthropic import Anthropic
 
 import config
+from trust import clean_name
 
 _client = None
 
@@ -40,7 +41,17 @@ def _get_client():
     return _client
 
 
+_URL = re.compile(r"(https?://\S+|www\.\S+|\b[\w-]+\.(com|net|org|io|co|app|xyz|ru|dev|link|ly)(/\S*)?)", re.I)
+
+
+def _strip_links(t):
+    """The brief lands in a trusted calendar event; never let it carry links
+    (company/role are email-derived, audit 2026-11-21 APP-04)."""
+    return _URL.sub("[link removed]", t)
+
+
 def interview_brief(company: str, role: str) -> str:
+    company, role = clean_name(company), clean_name(role, 90)
     if not company:
         return ""
     try:
@@ -53,7 +64,7 @@ def interview_brief(company: str, role: str) -> str:
                        "content": f"Company: {company}\n"
                                   f"Role: {role or 'Software Engineer Intern'}"}],
         )
-        return _no_dashes("".join(b.text for b in resp.content
-                                  if b.type == "text").strip())
+        return _strip_links(_no_dashes("".join(b.text for b in resp.content
+                                               if b.type == "text").strip()))
     except Exception:
         return ""  # scheduling must not fail because a brief couldn't be written

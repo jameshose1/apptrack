@@ -152,6 +152,8 @@ def fetch_target_postings(get_board, save_board):
             continue
         for j in jobs:
             title, url, location, country, epoch = _norm(ats, j)
+            if not re.match(r"^https?://", url or "", re.I):
+                continue  # only plain web links (APP-08)
             if not url or not _wanted(title, location, country):
                 continue
             jid = str(j.get("id") or url)

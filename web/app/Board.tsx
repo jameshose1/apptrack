@@ -18,6 +18,7 @@ import Detail from "./Detail";
 import Funnel from "./Funnel";
 import Network from "./Network";
 import Tabs from "./Tabs";
+import { safeHref } from "./lib/text";
 
 function fmtDate(s: string | null) {
   if (!s) return "";
@@ -254,7 +255,7 @@ export default function Board({
             </button>
             <a
               className="apply"
-              href={a.url ?? "#"}
+              href={safeHref(a.url) ?? "#"}
               target="_blank"
               rel="noreferrer"
             >

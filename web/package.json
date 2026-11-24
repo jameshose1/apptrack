@@ -5,13 +5,13 @@
   "scripts": {
     "dev": "next dev -p 3737",
     "build": "next build",
-    "start": "next start -p 3737"
+    "start": "next start -H 127.0.0.1 -p 3737"
   },
   "dependencies": {
     "better-sqlite3": "^11.3.0",
     "d3-sankey": "^0.12.3",
     "d3-shape": "^3.2.0",
-    "next": "^15.0.0",
+    "next": "^15.5.29",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -21,5 +21,8 @@
     "@types/node": "^22.5.0",
     "@types/react": "^18.3.5",
     "typescript": "^5.5.4"
+  },
+  "overrides": {
+    "postcss": "^8.5.33"
   }
 }

@@ -9,6 +9,7 @@ import {
 } from "./lib/status";
 import { setOutreachStatus, draftOutreach } from "./actions";
 import CopyButton from "./CopyButton";
+import { safeHref } from "./lib/text";
 
 const DAILY_TARGET = 15; // a sane daily pace so you don't blast everyone at once
 
@@ -163,8 +164,8 @@ export default function Network({ contacts }: { contacts: NetContact[] }) {
           <div className="ncard" key={c.id}>
             <div className="nmain">
               <div className="nhead">
-                {c.url ? (
-                  <a href={c.url} target="_blank" rel="noreferrer" className="nname">
+                {safeHref(c.url) ? (
+                  <a href={safeHref(c.url)} target="_blank" rel="noreferrer" className="nname">
                     {c.name}
                   </a>
                 ) : (
@@ -180,8 +181,8 @@ export default function Network({ contacts }: { contacts: NetContact[] }) {
               </div>
               <div className="nactions">
                 <DraftBtn id={c.id} has={!!c.connect_note} />
-                {c.url && (
-                  <a className="apply" href={c.url} target="_blank" rel="noreferrer">
+                {safeHref(c.url) && (
+                  <a className="apply" href={safeHref(c.url)} target="_blank" rel="noreferrer">
                     Open ↗
                   </a>
                 )}

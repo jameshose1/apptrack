@@ -20,6 +20,7 @@ import google_client as gc
 import imap_client
 import learning
 import normalize
+import trust
 from calendar_sync import (place_accountability_hour, schedule_interview,
                            sync_deadline, sync_oa_blocks)
 from db import connect, get_meta, init_db, set_meta
@@ -323,13 +324,23 @@ def run(dry=False):
     print(f"scan: reading INBOX since {since}")
 
     seen = classified = 0
+    capped = False
     for msg in imap_client.fetch_since(since):
         seen += 1
         if _already_seen(conn, msg["id"]):
             continue
+        if classified >= config.MAX_CLASSIFY_PER_SCAN:
+            capped = True  # leave the rest for the next run (cursor not advanced)
+            print(f"scan: hit the {config.MAX_CLASSIFY_PER_SCAN}-email cap, "
+                  "remaining mail waits for the next run")
+            break
         classified += 1
-        print(f"  . [{classified}] {msg['subject'][:55]}", flush=True)
+        print(f"  . [{classified}] {trust.safe_log(msg['subject'], 55)}", flush=True)
         verdict = classifier.classify(msg)
+        # company/role are model output steered by email text; they end up in
+        # calendar titles and the prep-brief prompt, so keep them plain (APP-04)
+        verdict["company"] = trust.clean_name(verdict.get("company"))
+        verdict["role"] = trust.clean_name(verdict.get("role"), 90)
         msg["_fp"] = fp.compute(
             msg["sender"], msg["subject"], msg["body"],
             strip_terms=[config.APPLICANT_NAME, verdict.get("company", "")],
@@ -338,12 +349,17 @@ def run(dry=False):
         if verdict["kind"] == "other":
             continue
 
-        print(f"[{msg['subject'][:60]}]")
+        print(f"[{trust.safe_log(msg['subject'])}]")
         learned = learning.matching_rule(conn, msg["_fp"])
         if learned:
             verdict["kind"] = learned
-            _apply_label(conn, cal, tasks_svc, msg, verdict, dry)
-        elif verdict["confidence"] >= config.AUTO_APPLY_CONFIDENCE:
+        # the verdict is untrusted: only auto-apply when the sender is
+        # authenticated + plausible and it doesn't bury live work (APP-03)
+        why = trust.gate(conn, msg, verdict, bool(learned))
+        if why:
+            print(f"  -> review: {why}")
+            _queue(conn, msg, verdict, dry)
+        elif learned or verdict["confidence"] >= config.AUTO_APPLY_CONFIDENCE:
             _apply_label(conn, cal, tasks_svc, msg, verdict, dry)
         else:
             _queue(conn, msg, verdict, dry)
@@ -358,7 +374,8 @@ def run(dry=False):
             if datetime.now().hour >= config.ACCOUNTABILITY_NIGHT_BEFORE_HOUR:
                 tomorrow = (datetime.now() + timedelta(days=1)).date()
                 place_accountability_hour(cal, tasks_svc, tomorrow)
-        set_meta(conn, "last_scan_epoch", str(int(time.time())))
+        if not capped:
+            set_meta(conn, "last_scan_epoch", str(int(time.time())))
     conn.close()
     print(f"scan: done ({seen} read, {classified} classified)")
 

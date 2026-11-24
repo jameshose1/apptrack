@@ -9,6 +9,7 @@ import WhyUs from "./WhyUs";
 import Tailor from "./Tailor";
 import FieldTrack from "./FieldTrack";
 import WishlistActions from "./WishlistActions";
+import { safeHref } from "./lib/text";
 
 function fmt(s: string | null) {
   if (!s) return "";
@@ -40,8 +41,8 @@ export default function Detail({
             <div>
               <h2 className="dco">
                 {a.is_dream ? <span className="star">★ </span> : null}
-                {a.url ? (
-                  <a href={a.url} target="_blank" rel="noreferrer">
+                {safeHref(a.url) ? (
+                  <a href={safeHref(a.url)} target="_blank" rel="noreferrer">
                     {a.company} ↗
                   </a>
                 ) : (

@@ -26,6 +26,13 @@ _US_STATES = {
 _DREAM_KEYS = {normalize.company_key(c) for c in config.DREAM_COMPANIES}
 
 
+def _http_only(u):
+    """Listing URLs come from a community repo; keep only plain web links
+    (never javascript:/data: etc., audit 2026-11-21 APP-08)."""
+    u = (u or "").strip()
+    return u if re.match(r"^https?://[^\s\"'<>]+$", u, re.I) else ""
+
+
 def _is_us(locations) -> bool:
     for loc in locations or []:
         low = loc.strip().lower()
@@ -80,7 +87,7 @@ def fetch_postings():
             "id": str(e.get("id")),
             "company": e.get("company_name", "").strip(),
             "role": e.get("title", "").strip(),
-            "url": e.get("url", "").strip(),
+            "url": _http_only(e.get("url", "")),
             "location": ", ".join(locs[:2]) if locs else "",
             "posted_epoch": epoch,
             "posted_iso": datetime.fromtimestamp(

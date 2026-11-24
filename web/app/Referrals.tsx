@@ -1,5 +1,6 @@
 import { alumniSearchUrl, type Contact } from "./lib/status";
 import CopyButton from "./CopyButton";
+import { safeHref } from "./lib/text";
 
 // a company is "applied-stage" once you've actually submitted, so the
 // "I just applied" reach-out message is accurate
@@ -43,8 +44,8 @@ export default function Referrals({
           {show.map((c, i) => (
             <span key={i} className="ref-one">
               {c.is_alum ? "🎓" : ""}
-              {c.url ? (
-                <a href={c.url} target="_blank" rel="noreferrer">
+              {safeHref(c.url) ? (
+                <a href={safeHref(c.url)} target="_blank" rel="noreferrer">
                   {c.name}
                 </a>
               ) : (

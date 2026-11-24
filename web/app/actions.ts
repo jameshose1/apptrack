@@ -5,6 +5,34 @@ import path from "path";
 import { promisify } from "util";
 import { revalidatePath } from "next/cache";
 import { db } from "./lib/db";
+import { STATUSES, FIELDS, TRACKS, OUTREACH_STATUSES } from "./lib/status";
+
+// --- input guards (audit 2026-11-21 APP-01/APP-11): every action is reachable
+// by anything that can talk to the server, so validate rather than trust ---
+function id(n: unknown): number {
+  if (typeof n !== "number" || !Number.isSafeInteger(n) || n <= 0)
+    throw new Error("bad id");
+  return n;
+}
+function oneOf<T extends string>(v: unknown, allowed: readonly T[]): T {
+  if (typeof v !== "string" || !(allowed as readonly string[]).includes(v))
+    throw new Error("bad value");
+  return v as T;
+}
+const QUEUE_KINDS = ["confirmation", "oa", "interview", "team_match", "offer", "rejection", "dismiss"] as const;
+const JD_MAX = 30_000;
+
+// Claude/Chrome-backed actions are paid and heavy; never run more than 2 at once
+let running = 0;
+async function limited<T>(fn: () => Promise<T>): Promise<T> {
+  if (running >= 2) throw new Error("busy, try again in a moment");
+  running++;
+  try {
+    return await fn();
+  } finally {
+    running--;
+  }
+}
 
 const pexec = promisify(execFile);
 const SCANNER = path.join(process.cwd(), "..", "scanner");
@@ -12,8 +40,10 @@ const PY = path.join(SCANNER, ".venv", "bin", "python");
 
 // Resolve a review-queue item via resolve.py so the self-learning rule logic
 // (confirm -> promote after 3) stays in one place.
-export async function resolveQueueItem(id: number, kind: string) {
-  await pexec(PY, [path.join(SCANNER, "resolve.py"), String(id), kind], {
+export async function resolveQueueItem(qid: number, kind: string) {
+  id(qid);
+  oneOf(kind, QUEUE_KINDS);
+  await pexec(PY, [path.join(SCANNER, "resolve.py"), String(qid), kind], {
     cwd: SCANNER,
   });
   revalidatePath("/");
@@ -22,6 +52,8 @@ export async function resolveQueueItem(id: number, kind: string) {
 // Manual board override (the status dropdown). Selecting "Missed OA" runs the
 // full teardown (calendar blocks, deadline/alert tasks) via miss_oa.py.
 export async function setStatus(appId: number, status: string) {
+  id(appId);
+  oneOf(status, STATUSES);
   if (status === "missed") {
     await markOaMissed(appId);
     return;
@@ -37,6 +69,7 @@ export async function setStatus(appId: number, status: string) {
 // Mark an OA completed (and reschedule the next one) via the scanner CLI so the
 // calendar + queue logic stays in one place.
 export async function markOaDone(appId: number) {
+  id(appId);
   await pexec(PY, [path.join(SCANNER, "complete_oa.py"), String(appId)], {
     cwd: SCANNER,
   });
@@ -44,6 +77,7 @@ export async function markOaDone(appId: number) {
 }
 
 export async function undoOaDone(appId: number) {
+  id(appId);
   await pexec(
     PY,
     [path.join(SCANNER, "complete_oa.py"), String(appId), "--undo"],
@@ -54,6 +88,7 @@ export async function undoOaDone(appId: number) {
 
 // Missed OA deadline: tear down its calendar artifacts and move it to rejected.
 export async function markOaMissed(appId: number) {
+  id(appId);
   await pexec(PY, [path.join(SCANNER, "miss_oa.py"), String(appId)], {
     cwd: SCANNER,
   });
@@ -67,6 +102,9 @@ export async function setFieldTrack(
   field: string,
   track: string
 ) {
+  id(appId);
+  oneOf(field, FIELDS);
+  oneOf(track, TRACKS);
   db()
     .prepare(
       "UPDATE applications SET field = ?, track = ?, updated_at = datetime('now') WHERE id = ?"
@@ -77,6 +115,7 @@ export async function setFieldTrack(
 
 // Wishlist -> applied (stamps the application date).
 export async function applyToWishlist(appId: number) {
+  id(appId);
   db()
     .prepare(
       "UPDATE applications SET status = 'applied', date_applied = date('now'), " +
@@ -89,15 +128,17 @@ export async function applyToWishlist(appId: number) {
 // Generate a tailored "why I want to work here" blurb (Claude, via the scanner
 // which holds the API key + the user's profile).
 export async function generateWhyUs(appId: number) {
-  await pexec(PY, [path.join(SCANNER, "why_us.py"), String(appId)], {
-    cwd: SCANNER,
-  });
+  id(appId);
+  await limited(() =>
+    pexec(PY, [path.join(SCANNER, "why_us.py"), String(appId)], { cwd: SCANNER })
+  );
   revalidatePath("/");
 }
 
 // Remove a wishlist posting the user isn't interested in. job_seen keeps its
 // source id, so the scanner won't re-add it.
 export async function dismissApp(appId: number) {
+  id(appId);
   db().prepare("DELETE FROM applications WHERE id = ?").run(appId);
   revalidatePath("/");
 }
@@ -106,6 +147,8 @@ export async function dismissApp(appId: number) {
 
 // Advance a contact's outreach status (plain SQLite write, no scanner needed).
 export async function setOutreachStatus(contactId: number, status: string) {
+  id(contactId);
+  oneOf(status, OUTREACH_STATUSES);
   db()
     .prepare(
       "UPDATE contacts SET outreach_status = ?, outreach_updated = datetime('now') WHERE id = ?"
@@ -117,15 +160,19 @@ export async function setOutreachStatus(contactId: number, status: string) {
 // Draft the connection note + follow-up chat ask (Claude, via the scanner which
 // holds the API key + the user's profile/voice).
 export async function draftOutreach(contactId: number) {
-  await pexec(PY, [path.join(SCANNER, "outreach.py"), String(contactId)], {
-    cwd: SCANNER,
-  });
+  id(contactId);
+  await limited(() =>
+    pexec(PY, [path.join(SCANNER, "outreach.py"), String(contactId)], { cwd: SCANNER })
+  );
   revalidatePath("/");
 }
 
 // Tailor an application to its role: saves the (optional) pasted job description,
 // then runs tailor.py (Claude) for the fit read + tailored bullets + gaps.
 export async function generateTailor(appId: number, jd?: string) {
+  id(appId);
+  if (jd !== undefined && (typeof jd !== "string" || jd.length > JD_MAX))
+    throw new Error("bad jd");
   if (typeof jd === "string") {
     db()
       .prepare(
@@ -134,8 +181,8 @@ export async function generateTailor(appId: number, jd?: string) {
       )
       .run(appId, jd);
   }
-  await pexec(PY, [path.join(SCANNER, "tailor.py"), String(appId)], {
-    cwd: SCANNER,
-  });
+  await limited(() =>
+    pexec(PY, [path.join(SCANNER, "tailor.py"), String(appId)], { cwd: SCANNER })
+  );
   revalidatePath("/");
 }

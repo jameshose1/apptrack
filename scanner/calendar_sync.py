@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import config
+from trust import clean_name
 import google_client as gc
 import prep
 
@@ -494,12 +495,13 @@ def schedule_interview(cal, tasks_svc, conn, application_id: int, when_iso: str,
     app = conn.execute(
         "SELECT company, role FROM applications WHERE id = ?", (application_id,)
     ).fetchone()
-    label = f"Interview: {app['company']}" if app else "Interview"
+    co = clean_name(app["company"]) if app else ""
+    label = f"Interview: {co}" if co else "Interview"
     # a ready-to-study prep brief, dropped into both the interview + prep events
     brief = prep.interview_brief(app["company"] if app else "",
                                  app["role"] if app else "")
     desc = f"{brief}\n\n— apptrack" if brief else \
-        f"apptrack interview ({app['role'] if app else ''})"
+        f"apptrack interview ({clean_name(app['role'], 90) if app else ''})"
     eid = gc.create_event(
         cal, label, when.isoformat(),
         (when + timedelta(minutes=minutes)).isoformat(),
@@ -513,7 +515,7 @@ def schedule_interview(cal, tasks_svc, conn, application_id: int, when_iso: str,
     )
     conn.commit()
     # prep block sometime before it, carrying the same brief
-    prep_label = f"Prep: {app['company']} interview" if app else "Interview prep"
+    prep_label = f"Prep: {co} interview" if co else "Interview prep"
     _book_before(cal, tasks_svc, conn, application_id, "prep", prep_label,
                  brief or "apptrack: prep for the interview", when,
                  config.INTERVIEW_PREP_MINUTES, config.INTERVIEW_PREP_COLOR_ID)

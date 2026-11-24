@@ -16,6 +16,8 @@
     <string>/Users/jameshose1/.nvm/versions/node/v24.14.1/bin/node</string>
     <string>/Users/jameshose1/dev/apptrack/web/node_modules/next/dist/bin/next</string>
     <string>start</string>
+    <string>-H</string>
+    <string>127.0.0.1</string>
     <string>-p</string>
     <string>3737</string>
   </array>

@@ -58,8 +58,11 @@ def fetch_since(since: date):
                             mark_seen=False):
             body = msg.text or _html_to_text(msg.html)
             received = msg.date.isoformat() if msg.date else datetime.now(timezone.utc).isoformat()
+            # Gmail's verdict on the From domain (DMARC/DKIM), used by trust.py
+            auth = " ; ".join(msg.headers.get("authentication-results", ()))
             yield {
                 "id": _msg_id(msg),
+                "auth": auth,
                 "thread_id": None,
                 "sender": msg.from_ or "",
                 "subject": msg.subject or "",

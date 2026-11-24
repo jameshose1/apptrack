@@ -28,6 +28,7 @@ def _creds():
             )
             creds = flow.run_local_server(port=0)
         config.GOOGLE_TOKEN_FILE.write_text(creds.to_json())
+        config.GOOGLE_TOKEN_FILE.chmod(0o600)  # refresh token: owner-only (APP-12)
     return creds
 
 

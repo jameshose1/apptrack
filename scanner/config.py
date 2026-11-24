@@ -173,3 +173,7 @@ TARGET_COMPANIES = [c.strip() for c in os.environ.get(
     "Replit,Warp,Raycast,Clay,Together AI,Fireworks AI,Sierra,Decagon,Hex,Neon,"
     "Resend,Browserbase,Windsurf,Ramp,Vercel,Retool"
 ).split(",") if c.strip()]
+
+# hard cap on Claude classifications per scan run, so an email flood can't
+# run up the API bill (audit 2026-11-21 APP-11). Overflow is picked up next run.
+MAX_CLASSIFY_PER_SCAN = int(os.environ.get("APPTRACK_MAX_CLASSIFY", "50"))
