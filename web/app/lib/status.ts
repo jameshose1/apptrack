@@ -179,3 +179,11 @@ export type QueueItem = {
   proposed_role: string;
   confidence: number;
 };
+
+export type WellfoundAnswer = {
+  id: number;
+  company: string;
+  url: string | null;
+  text: string;
+  created_at: string;
+};

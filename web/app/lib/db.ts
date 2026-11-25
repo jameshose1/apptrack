@@ -9,6 +9,7 @@ import {
   type Funnel,
   type NetContact,
   type QueueItem,
+  type WellfoundAnswer,
 } from "./status";
 
 // scanner and web share one SQLite file
@@ -205,4 +206,18 @@ export function getQueue(): QueueItem[] {
         "WHERE status = 'pending' ORDER BY received_at DESC"
     )
     .all() as QueueItem[];
+}
+
+// recent Wellfound "why this company" answers, newest first
+export function getWellfound(): WellfoundAnswer[] {
+  try {
+    return db()
+      .prepare(
+        "SELECT id, company, url, text, created_at FROM wellfound_answers " +
+          "ORDER BY id DESC LIMIT 30"
+      )
+      .all() as WellfoundAnswer[];
+  } catch {
+    return []; // table not created yet
+  }
 }

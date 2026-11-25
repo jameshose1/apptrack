@@ -242,3 +242,12 @@ button:disabled { opacity: .55; cursor: default; }
 .dsec .refs { font-size: 12.5px; margin-top: 0; }
 .dsec .refs-alum { font-size: 12px; margin-top: 6px; }
 .dnotes { font-size: 13px; line-height: 1.6; color: #c9cfda; margin: 0; white-space: pre-wrap; }
+
+/* Wellfound "why this company" tab */
+.wf { max-width: 820px; }
+.wf-form { margin: 6px 0 10px; display: grid; gap: 8px; }
+.wf-row { display: flex; gap: 8px; }
+.wf-row input { flex: 1; font-size: 13px; padding: 8px 10px; }
+.wf-form summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+.wf .dsec h3 a { color: inherit; }
+@media (max-width: 640px) { .wf-row { flex-direction: column; } }

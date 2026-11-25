@@ -9,6 +9,7 @@ import {
   type Application,
   type QueueItem,
   type NetContact,
+  type WellfoundAnswer,
 } from "./lib/status";
 import QueueButtons from "./QueueButtons";
 import WishlistActions from "./WishlistActions";
@@ -17,6 +18,7 @@ import StatusSelect from "./StatusSelect";
 import Detail from "./Detail";
 import Funnel from "./Funnel";
 import Network from "./Network";
+import Wellfound from "./Wellfound";
 import Tabs from "./Tabs";
 import { safeHref } from "./lib/text";
 
@@ -59,10 +61,12 @@ export default function Board({
   apps,
   queue,
   contacts,
+  wellfound,
 }: {
   apps: Application[];
   queue: QueueItem[];
   contacts: NetContact[];
+  wellfound: WellfoundAnswer[];
 }) {
   const [field, setField] = useState("all");
   const [track, setTrack] = useState("all");
@@ -382,6 +386,12 @@ export default function Board({
               (c) => c.outreach_status !== "skip" && c.outreach_status !== "chatted"
             ).length,
             node: <Network contacts={contacts} />,
+          },
+          {
+            key: "wellfound",
+            label: "Wellfound",
+            count: wellfound.length,
+            node: <Wellfound answers={wellfound} />,
           },
         ]}
       />

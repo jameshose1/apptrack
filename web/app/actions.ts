@@ -205,3 +205,43 @@ export async function generateTailor(appId: number, jd?: string) {
   );
   revalidatePath("/");
 }
+
+// --- Wellfound "why this company" ---
+
+const WF_NOTES_MAX = 14_000;
+
+// wellfound.py reads its request as JSON on stdin (pasted notes can be long)
+function runWellfound(req: object): Promise<{ code: number; out: string }> {
+  return new Promise((resolve) => {
+    const child = execFile(
+      PY,
+      [path.join(SCANNER, "wellfound.py")],
+      { cwd: SCANNER, timeout: 240_000 },
+      (err, stdout) =>
+        resolve({ code: err ? Number((err as { code?: unknown }).code ?? 1) : 0, out: stdout })
+    );
+    child.stdin?.end(JSON.stringify(req));
+  });
+}
+
+export async function writeWellfound(
+  company: string,
+  url: string,
+  notes: string
+): Promise<"ok" | "not_found"> {
+  if (typeof company !== "string" || !company.trim() || company.length > 80)
+    throw new Error("bad company");
+  if (typeof url !== "string" || url.length > 300) throw new Error("bad url");
+  if (typeof notes !== "string" || notes.length > WF_NOTES_MAX) throw new Error("bad notes");
+  const r = await limited(() => runWellfound({ company, url, notes }));
+  if (r.code === 3) return "not_found";
+  if (r.code !== 0) throw new Error("wellfound.py failed");
+  revalidatePath("/");
+  return "ok";
+}
+
+export async function deleteWellfound(answerId: number) {
+  id(answerId);
+  db().prepare("DELETE FROM wellfound_answers WHERE id = ?").run(answerId);
+  revalidatePath("/");
+}

@@ -158,6 +158,16 @@ CREATE TABLE IF NOT EXISTS ideal_answers (
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Wellfound "why this company" answers, typed in by company name (no card)
+CREATE TABLE IF NOT EXISTS wellfound_answers (
+    id         INTEGER PRIMARY KEY,
+    company    TEXT NOT NULL,
+    url        TEXT,
+    about      TEXT,
+    text       TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- per-application tailoring: an honest fit read + tailored resume bullets +
 -- skill gaps, optionally grounded in a pasted job description
 CREATE TABLE IF NOT EXISTS tailoring (

@@ -1,4 +1,4 @@
-import { getApplications, getQueue, getContacts } from "./lib/db";
+import { getApplications, getQueue, getContacts, getWellfound } from "./lib/db";
 import Board from "./Board";
 
 export const dynamic = "force-dynamic";
@@ -7,6 +7,7 @@ export default function Home() {
   const apps = getApplications();
   const queue = getQueue();
   const contacts = getContacts();
+  const wellfound = getWellfound();
   const tracked = apps.filter((a) => a.status !== "wishlist").length;
 
   return (
@@ -17,7 +18,7 @@ export default function Home() {
         </h1>
         <span className="count">{tracked} tracked</span>
       </div>
-      <Board apps={apps} queue={queue} contacts={contacts} />
+      <Board apps={apps} queue={queue} contacts={contacts} wellfound={wellfound} />
     </div>
   );
 }
