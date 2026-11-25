@@ -8,34 +8,22 @@ invents anything.
     python3 tailor.py <application_id>
 """
 import html
-import ipaddress
-import socket
-import urllib.parse
 import re
 import subprocess
 import sys
 from datetime import date
 from pathlib import Path
 
-import requests
-from anthropic import Anthropic
-
 import config
+import jd as jobs
+import voice
 from db import connect
 
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 PUBLIC = Path(__file__).resolve().parent.parent / "web" / "public" / "resumes"
-UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-      "(KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36")
 # his real profile links (his resume renders them as the words LinkedIn / GitHub)
 LINKEDIN_URL = "https://www.linkedin.com/in/james-hose-58b6b432b"
 GITHUB_URL = "https://github.com/jameshose1"
-
-
-def _no_dashes(t):
-    t = re.sub(r"\s*—\s*", ", ", t or "")
-    t = re.sub(r"\s*–\s*", " - ", t)
-    return t.replace(" ,", ",").replace(",,", ",").replace(", .", ".")
 
 
 def _slug(s):
@@ -51,104 +39,6 @@ def _rich(s):
     return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", _esc(s))
 
 
-_NONTEXT = re.compile(r"<(script|style|head|nav|footer|svg)[^>]*>.*?</\1>", re.S | re.I)
-
-
-def _html_to_text(h):
-    h = _NONTEXT.sub(" ", h)
-    h = re.sub(r"<(br|/p|/div|/li|/h[1-6]|/tr)[^>]*>", "\n", h, flags=re.I)
-    h = re.sub(r"<[^>]+>", " ", h)
-    h = html.unescape(h)
-    h = re.sub(r"[ \t]+", " ", h)
-    return re.sub(r"\n\s*\n+", "\n", h).strip()
-
-
-def _greenhouse_jd(url, company):
-    m = re.search(r"greenhouse\.io/(?:embed/job_app\?for=)?([^/?]+)/jobs/(\d+)", url)
-    if m:
-        tokens, jid = [m.group(1)], m.group(2)
-    else:
-        g = re.search(r"[?&]gh_jid=(\d+)", url)
-        if not g:
-            return ""
-        jid = g.group(1)
-        c = re.sub(r"[^a-z0-9]", "", (company or "").lower())
-        c1 = re.sub(r"[^a-z0-9]", "", (company or "").lower().split()[0]) if company else ""
-        tokens = [c, c1]
-    for tok in dict.fromkeys(t for t in tokens if t):
-        try:
-            r = requests.get(
-                f"https://boards-api.greenhouse.io/v1/boards/{tok}/jobs/{jid}",
-                headers={"User-Agent": UA}, timeout=15)
-            if r.status_code == 200:
-                data = r.json()
-                txt = _html_to_text(html.unescape(data.get("content") or ""))
-                if len(txt) >= 300:
-                    return ((data.get("title", "") + "\n" + txt).strip())[:7000]
-        except Exception:
-            pass
-    return ""
-
-
-def _public_url(url):
-    """Only http(s) URLs whose host resolves to public IPs (no LAN, loopback,
-    link-local, metadata). Posting URLs come from community lists, so a fetch
-    must not be steerable into the local network (audit 2026-11-21 APP-08)."""
-    try:
-        u = urllib.parse.urlsplit(url)
-        if u.scheme not in ("http", "https") or not u.hostname:
-            return False
-        infos = socket.getaddrinfo(u.hostname, u.port or (443 if u.scheme == "https" else 80))
-        for info in infos:
-            ip = ipaddress.ip_address(info[4][0])
-            if (ip.is_private or ip.is_loopback or ip.is_link_local
-                    or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
-                return False
-        return True
-    except Exception:
-        return False
-
-
-def _get_public(url, **kw):
-    """requests.get that re-checks every redirect hop with _public_url."""
-    for _ in range(6):
-        if not _public_url(url):
-            return None
-        r = requests.get(url, allow_redirects=False, **kw)
-        if r.is_redirect or r.status_code in (301, 302, 303, 307, 308):
-            loc = r.headers.get("location")
-            if not loc:
-                return r
-            url = urllib.parse.urljoin(url, loc)
-            continue
-        return r
-    return None
-
-
-def _fetch_jd(url, company=""):
-    if not url or not _public_url(url):
-        return ""
-    gh = _greenhouse_jd(url, company)
-    if gh:
-        return gh
-    try:
-        r = _get_public(url, headers={"User-Agent": UA,
-                                      "Accept-Language": "en-US,en;q=0.9"},
-                        timeout=20)
-    except Exception:
-        return ""
-    if r is None:
-        return ""
-    if r.status_code != 200:
-        return ""
-    txt = _html_to_text(r.text)
-    low = txt.lower()[:700]
-    if (len(txt) < 400 or "enable javascript" in low
-            or "verify you are human" in low or "are you a robot" in low):
-        return ""
-    return txt[:7000]
-
-
 # ---------------------------------------------------------------- resume ----
 
 RESUME_SYSTEM = (
@@ -160,14 +50,19 @@ RESUME_SYSTEM = (
     "each bullet to emphasize what THIS role cares about, using the role's "
     "language where it is honestly true of him. You may reorder bullets, and "
     "reorder projects so the most relevant one is first, but never invent or "
-    "change a fact, number, tool, or outcome. Keep every real metric.\n"
-    "Each bullet is one or two lines, starts with a strong verb, and wraps the "
+    "change a fact, number, tool, or outcome. A bullet may not say what the work "
+    "led to, reduced or improved unless his resume says it. Keep every real metric.\n"
+    "Each bullet starts with a strong verb, and wraps the "
     "single most important metric or keyword in **double asterisks** so it "
     "renders bold (exactly like his resume does). STRICT bullet caps so it fits "
     "ONE page: at most 3 bullets per project, at most 2 per job, at most 1 per "
-    "leadership/activity item. Keep bullets to one line where you can. Cut the "
+    "leadership/activity item. Every bullet fits on ONE line: 110 characters at "
+    "most, counting spaces. A project's name is its short name only ('SleepPool'), "
+    "with the tagline in subtitle and the stack in stack, trimmed to the 4 or 5 tools "
+    "that matter here so the line doesn't wrap. Two or three bullets for each of the "
+    "two most relevant projects, two for the rest. Cut the "
     "weakest bullets rather than padding, no filler like 'demonstrating X' or "
-    "'showing ability to'. NEVER use em dashes or en dashes. Copy education and "
+    "'showing ability to'. Copy education and "
     "skills through verbatim from his resume (do not tailor those)."
 )
 
@@ -240,8 +135,8 @@ RESUME_TOOL = {
                     "required": ["org", "role", "bullets"],
                 },
             },
-            "fit": {"type": "string", "description": "2-3 honest sentences on fit + what he leads with"},
-            "gaps": {"type": "string", "description": "skills/keywords to study or surface, honest"},
+            "fit": {"type": "string", "description": "2-3 plain sentences to James (say 'you'): which project to lead with for this role and why, then where the fit is thin. Only facts in the resume, no praise or sales words"},
+            "gaps": {"type": "string", "description": "what the posting asks for that the resume does not show, semicolon separated, each a few plain words"},
         },
         "required": ["name", "education", "skills", "projects", "experience", "fit", "gaps"],
     },
@@ -340,16 +235,16 @@ def _render_resume_html(d):
 # ------------------------------------------------------------ cover letter --
 
 COVER_SYSTEM = (
-    "Write a cover letter for a University of Maryland Computer Science student "
-    "applying to a specific internship, in HIS first-person voice. Ground every "
-    "claim in his real resume, NEVER invent experience. Three short paragraphs, "
+    "Write the body of a cover letter for James, a University of Maryland Computer Science student "
+    "applying to a specific internship, in his first-person voice. Only claim what "
+    "his resume states. Three short paragraphs, "
     "about 230 to 280 words total: (1) which role and company and a genuine, "
     "specific reason he is drawn to it; (2) 1 to 2 concrete things he has built "
     "(from his resume) that map directly to what this role needs, with real "
-    "detail; (3) a brief, confident close. Sound like a sharp real student, not "
-    "a template, no cliches, no 'I am writing to express my interest', no "
-    "flattery he could not back up. Output ONLY the body paragraphs separated by "
-    "a blank line, no greeting and no signature. NEVER use em dashes or en dashes."
+    "detail, said in plain words instead of resume phrasing; (3) a brief close, one "
+    "or two sentences. No 'I am writing to express my interest', no flattery he "
+    "could not back up. Separate the paragraphs with a blank line. No greeting and "
+    "no signature."
 )
 
 COVER_CSS = """
@@ -397,6 +292,31 @@ def _to_pdf(html_str, pdf_path):
     return pdf_path.exists()
 
 
+def _pages(pdf_path):
+    return len(re.findall(rb"/Type\s*/Page[^s]", pdf_path.read_bytes()))
+
+
+def _resume_pdf(data, pdf_path):
+    """Render the resume on one page: step the font down a little, and if that
+    isn't enough drop bullets, last one first."""
+    for _ in range(12):
+        page = _render_resume_html(data)
+        for pt in ("10.3pt", "10pt", "9.7pt"):
+            if not _to_pdf(page.replace("font-size: 10.3pt", f"font-size: {pt}", 1), pdf_path):
+                return False
+            if _pages(pdf_path) == 1:
+                return True
+        # jobs give up their second bullet before projects give up anything
+        for group in (data.get("experience", []), data.get("projects", [])):
+            longest = max(group, key=lambda e: len(e.get("bullets") or []), default=None)
+            if longest and len(longest["bullets"]) > 1:
+                longest["bullets"].pop()
+                break
+        else:
+            return True
+    return True
+
+
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+")
 _PHONE_RE = re.compile(r"\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}")
 
@@ -416,68 +336,71 @@ def main(app_id):
     if not app:
         print(f"no application {app_id}")
         return
-    row = conn.execute("SELECT jd FROM tailoring WHERE application_id = ?",
-                       (app_id,)).fetchone()
-    jd = (row["jd"] if row else "") or ""
-    if not jd.strip() and app["url"]:
-        fetched = _fetch_jd(app["url"], app["company"])
-        if fetched:
-            jd = fetched
-            print(f"pulled job description from the posting ({len(jd)} chars)")
-        else:
-            print("could not pull the posting (JS/login-walled?), tailoring to "
-                  "company + role")
+    jd = jobs.for_application(conn, app_id)
+    print(f"job description: {len(jd)} chars" if jd else
+          "no job description (JS/login-walled?), tailoring to company + role")
 
     prof = {r["key"]: r["value"] for r in
             conn.execute("SELECT key, value FROM profile").fetchall()}
     experience = prof.get("experience") or "(no resume on file)"
     role = app["role"] or "Software Engineer Intern"
-    jd_block = (f"Job description:\n{jd[:6000]}\n\n" if jd.strip()
-                else "No job description, tailor to the company and role.\n\n")
-    client = Anthropic(api_key=config.ANTHROPIC_API_KEY)
-
+    jd_block = voice.posting(jd) or (
+        "No job description, tailor to the company and role.\n\n")
     def clean(x):
         if isinstance(x, str):
-            return _no_dashes(x)
+            return voice.clean(x)
         if isinstance(x, list):
             return [clean(i) for i in x]
         if isinstance(x, dict):
             return {k: clean(v) for k, v in x.items()}
         return x
 
+    def strings(x):
+        if isinstance(x, str):
+            return [x]
+        return [s for v in (x.values() if isinstance(x, dict) else x) for s in strings(v)]
+
     # ----- resume (same layout + entries, only bullets re-angled) -----
-    resp = client.messages.create(
-        model=config.PREP_MODEL, max_tokens=2400,
-        system=[{"type": "text", "text": RESUME_SYSTEM, "cache_control": {"type": "ephemeral"}}],
-        tools=[RESUME_TOOL], tool_choice={"type": "tool", "name": "resume"},
-        messages=[{"role": "user", "content":
-                   f"Company: {app['company']}\nRole: {role}\n\n{jd_block}"
-                   f"My exact resume (keep the layout, entries, titles, dates, "
-                   f"education, and skills identical, only re-angle the bullets):\n"
-                   f"{experience[:5000]}\n\nProduce the tailored resume."}],
-    )
-    data = next((b.input for b in resp.content if b.type == "tool_use"), None)
+    msgs = [{"role": "user", "content":
+             f"Company: {app['company']}\nRole: {role}\n\n{jd_block}"
+             f"My exact resume (keep the layout, entries, titles, dates, "
+             f"education, and skills identical, only re-angle the bullets):\n"
+             f"{experience}\n\nProduce the tailored resume by calling the resume tool."}]
+    data = None
+    for attempt in range(2):
+        resp = voice.create(
+            system=voice.system(RESUME_SYSTEM, "doc"), tools=[RESUME_TOOL],
+            messages=msgs, max_tokens=12000)
+        call = next((b for b in resp.content if b.type == "tool_use"), None)
+        if not call or resp.stop_reason == "max_tokens":
+            break  # nothing usable this time; a first pass still stands
+        data = clean(call.input)
+        # wording that breaks the writing rules gets one correction
+        found = [t for s in strings(data) for t in voice.tells(s, "doc")]
+        if attempt or not found:
+            break
+        msgs += [{"role": "assistant", "content": resp.content},
+                 {"role": "user", "content": [
+                     {"type": "tool_result", "tool_use_id": call.id, "content":
+                      "Reword only these, keep every fact, and send the whole resume "
+                      "again: " + "; ".join(dict.fromkeys(found))}]}]
     if not data:
         print("no resume produced")
         return
-    data = clean(data)
     # contact line always comes from his real resume, never from model output
     # (a job page could otherwise inject its own email/phone, APP-09)
     data.update(_contact(experience))
     slug = f"{_slug(app['company'])}-{_slug(role)}"
     resume_pdf = PUBLIC / f"{slug}.pdf"
-    resume_ok = _to_pdf(_render_resume_html(data), resume_pdf)
+    resume_ok = _resume_pdf(data, resume_pdf)
     resume_url = f"/resumes/{slug}.pdf" if resume_ok else None
 
     # ----- cover letter -----
-    cresp = client.messages.create(
-        model=config.PREP_MODEL, max_tokens=700,
-        system=[{"type": "text", "text": COVER_SYSTEM, "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content":
-                   f"Company: {app['company']}\nRole: {role}\n\n{jd_block}"
-                   f"My real resume:\n{experience[:4500]}\n\nWrite the cover letter body."}],
-    )
-    body = _no_dashes("".join(b.text for b in cresp.content if b.type == "text").strip())
+    body = voice.write(
+        COVER_SYSTEM,
+        f"Company: {app['company']}\nRole: {role}\n\n{jd_block}"
+        f"My real resume:\n{experience}\n\nWrite the cover letter body.",
+        facts=f"{experience}\n{app['company']} {role}", words=(200, 300))
     cover_pdf = PUBLIC / f"{slug}-cover.pdf"
     cover_ok = _to_pdf(_render_cover_html(data["name"],
                                           data.get("phone"), data.get("email"),

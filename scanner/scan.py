@@ -62,6 +62,7 @@ _ROLE_STOP = {
     "2026", "2027", "2028", "co", "op", "coop", "the", "and", "of", "for",
     "new", "grad", "program", "early", "career", "swe", "technical",
     "technology", "tech", "full", "time", "student", "university", "college",
+    "unknown",   # the classifier's placeholder when an email names no role
 }
 
 
@@ -70,11 +71,49 @@ def _role_tokens(role):
             if t and len(t) > 1 and t not in _ROLE_STOP}
 
 
+# what kind of job a title is for. Two titles that name different kinds are
+# different applications no matter what other words they share.
+_BUSINESS = {
+    "marketing", "sales", "finance", "financial", "accounting", "legal", "hr",
+    "recruiting", "communications", "supply", "procurement", "business",
+    "receptionist", "insurance", "agent", "growth", "merchandising",
+}
+_ENGINEERING = {"software", "engineer", "engineering", "developer", "swe",
+                "programmer", "sde", "sre"}
+_SPECIALTY = {
+    "backend": "backend", "frontend": "frontend", "stack": "fullstack",
+    "fullstack": "fullstack", "ios": "mobile", "android": "mobile",
+    "mobile": "mobile", "security": "security", "hardware": "hardware",
+    "firmware": "embedded", "embedded": "embedded", "robotics": "robotics",
+    "gpu": "gpu", "compiler": "compiler", "data": "data", "ml": "ml",
+    "machine": "ml", "devops": "infra", "infrastructure": "infra",
+    "platform": "infra", "qa": "test", "test": "test", "game": "game",
+}
+
+
+def _role_conflict(a, b):
+    """True if two titles are plainly for different jobs: business vs software,
+    or two specialties with nothing in common (backend vs iOS). A title too
+    vague to say ("Software Engineer Intern") conflicts with neither."""
+    norm = [re.sub(r"\b(back|front)[ -]end\b", r"\1end", (x or "").lower()) for x in (a, b)]
+    wa, wb = ({t for t in re.split(r"[^a-z0-9]+", x) if t} for x in norm)
+    biz_a, biz_b = wa & _BUSINESS, wb & _BUSINESS
+    if (biz_a and not biz_b and wb & _ENGINEERING) or (biz_b and not biz_a and wa & _ENGINEERING):
+        # "Business Systems Engineer" style titles are still engineering
+        if not (wa & _ENGINEERING and wb & _ENGINEERING):
+            return True
+    if biz_a and biz_b:
+        return not (biz_a & biz_b)
+    sa = {_SPECIALTY[t] for t in wa if t in _SPECIALTY}
+    sb = {_SPECIALTY[t] for t in wb if t in _SPECIALTY}
+    return bool(sa and sb and not sa & sb)
+
+
 def _role_match(a, b):
     """True if two roles share a distinctive token. False when either is generic
     (only stop-words) — then we can't tell the roles apart by title alone."""
     ta, tb = _role_tokens(a), _role_tokens(b)
-    return bool(ta and tb and (ta & tb))
+    return bool(ta and tb and (ta & tb)) and not _role_conflict(a, b)
 
 
 # two orthogonal tags that split the board: CS vs non-CS, internship vs job.
@@ -109,7 +148,8 @@ def _find_or_create_application(conn, company, role, status, dry,
     Prefers a role match at the company so a confirmation email PROMOTES the
     matching wishlist card the user forgot to mark applied. Falls back to an
     existing pipeline row, then a lone wishlist card; only makes a brand-new row
-    when nothing sensible matches.
+    when nothing sensible matches. A confirmation is never attached to a card for
+    a plainly different job, since that means he applied to a second one.
     """
     company = (company or "").strip()
     if not company:
@@ -120,6 +160,8 @@ def _find_or_create_application(conn, company, role, status, dry,
         "ORDER BY id DESC", (key,),
     ).fetchall()
     chosen = None
+    if status == "applied":
+        rows = [r for r in rows if not _role_conflict(role, r["role"])]
     if rows:
         matches = [r for r in rows if _role_match(role, r["role"])]
         if matches:  # same role — prefer a wishlist card so it gets promoted
@@ -127,7 +169,8 @@ def _find_or_create_application(conn, company, role, status, dry,
             chosen = (wl or matches)[0]["id"]
         else:
             pipeline = [r for r in rows if r["status"] != "wishlist"]
-            wl = [r for r in rows if r["status"] == "wishlist"]
+            wl = [r for r in rows if r["status"] == "wishlist"
+                  and not _role_conflict(role, r["role"])]
             if pipeline:
                 chosen = pipeline[0]["id"]           # already-tracked row
             elif len(wl) == 1 and status and status != "wishlist":

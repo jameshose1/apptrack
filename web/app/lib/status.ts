@@ -70,6 +70,7 @@ export type Application = {
   round: number;
   contacts: Contact[];
   blurb: string | null;
+  ideal: string | null; // "ideal candidate" answer
   tailor_fit: string | null;
   tailor_resume: string | null; // url to the generated tailored-resume PDF
   tailor_cover: string | null; // url to the generated tailored cover-letter PDF

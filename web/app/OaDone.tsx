@@ -32,7 +32,7 @@ export default function OaDone({ id, done }: { id: number; done: boolean }) {
         className="oa-btn missed"
         disabled={pending}
         onClick={() => start(() => markOaMissed(id))}
-        title="Missed the deadline — remove it"
+        title="Missed the deadline, remove it"
       >
         Missed
       </button>

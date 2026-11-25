@@ -135,6 +135,7 @@ export default function Board({
   const prep = (a: Application) => (
     <span className="prep">
       {a.blurb && <span title="why-us written">✍️</span>}
+      {a.ideal && <span title="ideal candidate answer written">🎯</span>}
       {(a.tailor_resume || a.tailor_fit) && <span title="resume tailored">✨</span>}
       {a.contacts.length > 0 && <span title="people you know here">🤝{a.contacts.length}</span>}
     </span>

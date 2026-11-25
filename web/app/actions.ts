@@ -167,20 +167,39 @@ export async function draftOutreach(contactId: number) {
   revalidatePath("/");
 }
 
+function saveJd(appId: number, jd: unknown) {
+  if (jd === undefined) return;
+  if (typeof jd !== "string" || jd.length > JD_MAX) throw new Error("bad jd");
+  db()
+    .prepare(
+      "INSERT INTO tailoring(application_id, jd) VALUES(?, ?) " +
+        "ON CONFLICT(application_id) DO UPDATE SET jd = excluded.jd"
+    )
+    .run(appId, jd);
+}
+
+// Answer "what makes you an ideal candidate" from the job description. ideal.py
+// exits 3 when there's no description to read, so the card can ask for one.
+export async function generateIdeal(appId: number, jd?: string): Promise<"ok" | "no_jd"> {
+  id(appId);
+  saveJd(appId, jd);
+  try {
+    await limited(() =>
+      pexec(PY, [path.join(SCANNER, "ideal.py"), String(appId)], { cwd: SCANNER })
+    );
+  } catch (e) {
+    if ((e as { code?: unknown }).code === 3) return "no_jd";
+    throw e;
+  }
+  revalidatePath("/");
+  return "ok";
+}
+
 // Tailor an application to its role: saves the (optional) pasted job description,
 // then runs tailor.py (Claude) for the fit read + tailored bullets + gaps.
 export async function generateTailor(appId: number, jd?: string) {
   id(appId);
-  if (jd !== undefined && (typeof jd !== "string" || jd.length > JD_MAX))
-    throw new Error("bad jd");
-  if (typeof jd === "string") {
-    db()
-      .prepare(
-        "INSERT INTO tailoring(application_id, jd) VALUES(?, ?) " +
-          "ON CONFLICT(application_id) DO UPDATE SET jd = excluded.jd"
-      )
-      .run(appId, jd);
-  }
+  saveJd(appId, jd);
   await limited(() =>
     pexec(PY, [path.join(SCANNER, "tailor.py"), String(appId)], { cwd: SCANNER })
   );

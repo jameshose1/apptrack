@@ -1,37 +1,25 @@
 """Generate a tailored "why I want to work at <company>" blurb for one
-application, grounded in the user's real resume and matching their writing voice
-if a sample is on file. Stores it in the blurbs table. The web UI shells here.
+application, grounded in the user's real resume and the posting. Stores it in the blurbs table. The web UI shells here.
 
     python3 why_us.py <application_id>
 """
-import re
 import sys
 
-from anthropic import Anthropic
-
-import config
+import jd as jobs
+import voice
 from db import connect
+from trust import clean_name
 
-
-def _no_dashes(t):
-    """Strip em/en dashes (the user hates them): em -> comma, en -> hyphen."""
-    t = re.sub(r"\s*—\s*", ", ", t)   # — em dash
-    t = re.sub(r"\s*–\s*", " - ", t)  # – en dash
-    return t.replace(" ,", ",").replace(",,", ",").replace(", .", ".")
-
-SYSTEM = (
-    "You write a short 'why I want to work here' blurb for a University of "
-    "Maryland CS student's job application, in HIS first-person voice. Rules:\n"
-    "- Ground it in his REAL background below; make 1-2 specific, credible links "
-    "between what he's built and what this company/role does. Never invent "
-    "experience he doesn't have.\n"
-    "- 80-110 words, one paragraph, first person. Specific and genuine, no "
-    "cliches, no 'I am passionate about', no corporate filler, no flattery he "
-    "couldn't back up.\n"
-    "- If a writing sample is provided, match its tone, rhythm, and vocabulary. "
-    "If not, write plainly and naturally, like a sharp student, not a brochure.\n"
-    "- NEVER use em dashes or en dashes. Use commas, colons, or hyphens.\n"
-    "- Output ONLY the blurb text, no preamble, no quotes."
+TASK = (
+    "You write James's short answer to \"why do you want to work here?\" on a job "
+    "application. He is a Computer Science student at the University of Maryland.\n"
+    "- 80 to 110 words, one paragraph, first person.\n"
+    "- Make one or two specific, credible links between what he has built and what "
+    "this company or role does. Use the posting for what they do, if there is one. "
+    "Without one, stick to what the company is plainly known for.\n"
+    "- Only claim what the background states. No flattery he couldn't back up, and "
+    "no history with the company or its product unless the background gives one.\n"
+    "- Say what a project does in plain words instead of pasting resume phrasing."
 )
 
 
@@ -47,26 +35,20 @@ def main(app_id):
     experience = prof.get("experience") or "(no resume on file)"
     style = prof.get("style")
 
-    user = (f"Company: {app['company']}\nRole: {app['role'] or 'Software Engineer Intern'}\n\n"
-            f"My background (resume):\n{experience[:4000]}\n\n"
-            + (f"Match this writing voice (samples of how I write):\n{style[:3500]}\n\n"
-               if style else "")
-            + "Write the blurb.")
-
-    client = Anthropic(api_key=config.ANTHROPIC_API_KEY)
-    resp = client.messages.create(
-        model=config.PREP_MODEL, max_tokens=400,
-        system=[{"type": "text", "text": SYSTEM,
-                 "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content": user}],
-    )
-    text = _no_dashes("".join(b.text for b in resp.content
-                              if b.type == "text").strip())
+    company = clean_name(app["company"])
+    role = clean_name(app["role"], 90) or "Software Engineer Intern"
+    user = (f"Company: {company}\nRole: {role}\n\n"
+            + voice.posting(jobs.for_application(conn, app_id))
+            + f"My background (everything you may claim about me):\n{experience}\n\n"
+            + (f"Samples of how I write:\n{style}\n\n" if style else "")
+            + "Write the answer.")
+    text = voice.write(TASK, user, facts=f"{experience}\n{company} {role}",
+                       words=(70, 120))
     conn.execute(
         "INSERT OR REPLACE INTO blurbs(application_id, text, created_at) "
         "VALUES(?, ?, datetime('now'))", (app_id, text))
     conn.commit()
-    print(f"generated blurb for {app['company']} ({len(text)} chars)")
+    print(f"generated blurb for {company} ({len(text)} chars)")
 
 
 if __name__ == "__main__":

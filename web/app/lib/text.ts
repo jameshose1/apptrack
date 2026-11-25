@@ -13,6 +13,9 @@ export function sentences(s: string | null | undefined): string[] {
 
 // group sentences into short paragraphs (~2 sentences each) for easy reading
 export function paragraphs(s: string | null | undefined, per = 2): string[] {
+  // keep the writer's own paragraph breaks when there are any
+  const own = (s ?? "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  if (own.length > 1) return own;
   const sents = sentences(s);
   if (sents.length <= per) return sents.length ? [sents.join(" ")] : [];
   const out: string[] = [];

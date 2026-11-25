@@ -360,7 +360,7 @@ def sync_oa_blocks(cal, tasks_svc, conn):
                 role = f": {r['role']}" if r["role"] else ""
                 gc.create_task(
                     tasks_svc,
-                    f"⚠️ Set OA deadline — {r['company']}{role}",
+                    f"⚠️ Set OA deadline: {r['company']}{role}",
                     today.isoformat(),
                     notes="apptrack couldn't detect this OA's deadline from the "
                           "email. Check it and set the due date so it schedules "
@@ -500,7 +500,7 @@ def schedule_interview(cal, tasks_svc, conn, application_id: int, when_iso: str,
     # a ready-to-study prep brief, dropped into both the interview + prep events
     brief = prep.interview_brief(app["company"] if app else "",
                                  app["role"] if app else "")
-    desc = f"{brief}\n\n— apptrack" if brief else \
+    desc = f"{brief}\n\n(apptrack)" if brief else \
         f"apptrack interview ({clean_name(app['role'], 90) if app else ''})"
     eid = gc.create_event(
         cal, label, when.isoformat(),

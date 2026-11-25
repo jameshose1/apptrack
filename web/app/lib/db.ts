@@ -135,6 +135,7 @@ export function getApplications(): Application[] {
         "(SELECT MAX(received_at) FROM email_events e WHERE e.application_id = a.id) " +
         " AS last_email, " +
         "(SELECT text FROM blurbs b WHERE b.application_id = a.id) AS blurb, " +
+        "(SELECT text FROM ideal_answers i WHERE i.application_id = a.id) AS ideal, " +
         "(SELECT fit FROM tailoring t WHERE t.application_id = a.id) AS tailor_fit, " +
         "(SELECT resume_path FROM tailoring t WHERE t.application_id = a.id) AS tailor_resume, " +
         "(SELECT cover_path FROM tailoring t WHERE t.application_id = a.id) AS tailor_cover, " +

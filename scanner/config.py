@@ -37,6 +37,13 @@ CLASSIFIER_MODEL = os.environ.get("APPTRACK_MODEL", "claude-haiku-4-5-20251001")
 # model for interview-prep briefs (infrequent, so a stronger default is fine)
 PREP_MODEL = os.environ.get("APPTRACK_PREP_MODEL", CLASSIFIER_MODEL)
 
+# Prose he sends in his own name (see voice.py). Haiku padded these with claims
+# that aren't in the resume, so they get a stronger model; it only runs on a click.
+WRITE_MODEL = os.environ.get("APPTRACK_WRITE_MODEL", "claude-opus-5-5")
+# the rules all of it follows
+WRITING_SKILL = Path(os.environ.get(
+    "APPTRACK_WRITING_SKILL", "~/.claude/skills/writing/SKILL.md")).expanduser()
+
 # your name, used to strip personalized tokens out of fingerprints
 APPLICANT_NAME = os.environ.get("APPTRACK_APPLICANT_NAME", "James Hose")
 

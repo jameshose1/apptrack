@@ -151,6 +151,13 @@ CREATE TABLE IF NOT EXISTS blurbs (
     created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- "what makes you an ideal candidate" answers, one per application
+CREATE TABLE IF NOT EXISTS ideal_answers (
+    application_id INTEGER PRIMARY KEY REFERENCES applications(id) ON DELETE CASCADE,
+    text           TEXT,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- per-application tailoring: an honest fit read + tailored resume bullets +
 -- skill gaps, optionally grounded in a pasted job description
 CREATE TABLE IF NOT EXISTS tailoring (

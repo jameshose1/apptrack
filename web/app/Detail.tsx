@@ -6,6 +6,7 @@ import StatusSelect from "./StatusSelect";
 import OaDone from "./OaDone";
 import Referrals from "./Referrals";
 import WhyUs from "./WhyUs";
+import Ideal from "./Ideal";
 import Tailor from "./Tailor";
 import FieldTrack from "./FieldTrack";
 import WishlistActions from "./WishlistActions";
@@ -84,6 +85,7 @@ export default function Detail({
           {!closed && (
             <>
               <WhyUs appId={a.id} company={a.company} blurb={a.blurb} />
+              <Ideal appId={a.id} answer={a.ideal} />
               <Tailor
                 appId={a.id}
                 fit={a.tailor_fit}

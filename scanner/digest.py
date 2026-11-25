@@ -39,7 +39,7 @@ def build(conn, today):
         "ORDER BY datetime(d.due_at)").fetchall()
     if soon:
         lines.append("Due within 7 days:")
-        lines += [f"  • {r['kind'].upper()} – {r['company']} "
+        lines += [f"  • {r['kind'].upper()}: {r['company']} "
                   f"({r['due_at'][:10]})" for r in soon]
         lines.append("")
 
